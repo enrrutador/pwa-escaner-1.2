@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-navy-50: #eef2f7;
+  --color-navy-100: #dbe4ee;
+  --color-navy-200: #b8cce0;
+  --color-navy-300: #8aa9cc;
+  --color-navy-400: #5d85b0;
+  --color-navy-500: #3e638c;
+  --color-navy-600: #2e4e70;
+  --color-navy-700: #1f3a56;
+  --color-navy-800: #142a3e;
+  --color-navy-900: #0b1e2c;
+  --color-navy-950: #06121a;
+
+  --color-cyan-50: #ecfeff;
+  --color-cyan-100: #cffafe;
+  --color-cyan-200: #a5f3fc;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  --color-cyan-700: #0e7490;
+  --color-cyan-800: #155e75;
+  --color-cyan-900: #164e63;
+  --color-cyan-950: #083344;
+
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+  --color-orange-950: #431407;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+:root {
+  --background: #0b1220;
+  --foreground: #ffffff;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
