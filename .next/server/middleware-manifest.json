@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "middleware": {},
+  "functions": {
+    "/api/buscar/route": {
+      "files": [
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "prerender-manifest.js",
+        "server/edge-runtime-webpack.js",
+        "server/app/api/buscar/route.js"
+      ],
+      "name": "app/api/buscar/route",
+      "page": "/api/buscar/route",
+      "matchers": [
+        {
+          "regexp": "^/api/buscar$",
+          "originalSource": "/api/buscar"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "environments": {
+        "previewModeId": "7b831e51a85475c46601ae87f88b6b51",
+        "previewModeSigningKey": "b0b4cafebbcf26dfae1a0c2d73e3de98f76c850c3cde06900a6e468b5d9ffda1",
+        "previewModeEncryptionKey": "836c41a7e1074a6b8c171013eb246120cfcb9097be5f4268beb7bc4668f8469f"
+      }
+    }
+  },
+  "sortedMiddleware": []
+}
