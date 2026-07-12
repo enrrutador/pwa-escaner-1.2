@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST='{"app/historial/page.tsx -> chart.js/auto":{"id":433,"files":["static/chunks/ca377847.a5b89e4016676cf9.js","static/chunks/621.63594f4248565a58.js"]}}';
