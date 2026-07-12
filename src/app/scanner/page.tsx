@@ -126,19 +126,13 @@ function ScannerInner() {
               <div className="corner br" />
               <div className="laser" />
               {activo && (
-                <Suspense fallback={
-                  <div className="absolute inset-0 grid place-items-center bg-black/80">
-                    <div className="scanner-pulse h-12 w-12 rounded-full border-2 border-primary" />
-                  </div>
-                }>
                   <BarcodeScanner
                     ref={scannerRef}
                     activo={activo}
                     onScan={onScan}
                     cooldownMs={1500}
                   />
-                </Suspense>
-              )}
+                )}
             </div>
             <div className="scan-hint">
               <span>{buscando ? 'Buscando producto...' : 'Alineá el código de barras dentro del marco'}</span>
