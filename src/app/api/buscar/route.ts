@@ -43,9 +43,12 @@ async function buscarVtex(
     ? `${base}/api/catalog_system/pub/products/search/?fq=EAN:${encodeURIComponent(q)}`
     : `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
 
+  console.log(`[buscar] ${fuente} -> ${url}`);
   const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
+  console.log(`[buscar] ${fuente} status: ${res.status}`);
   if (!res.ok) return [];
   const data = (await res.json()) as any[];
+  console.log(`[buscar] ${fuente} items: ${data?.length ?? 0}`);
 
   return (data ?? []).map((p) => {
     const item = p.items?.[0];
@@ -64,7 +67,9 @@ async function buscarVtex(
 async function buscarCoto(q: string): Promise<ResultadoBusqueda[]> {
   if (!COTO_KEY) return [];
   const url = `${COTO_AUTOCOMPLETE}/${encodeURIComponent(q)}?key=${COTO_KEY}&num_results=1`;
+  console.log(`[buscar] coto -> ${url}`);
   const res = await fetchConTimeout(url);
+  console.log(`[buscar] coto status: ${res.status}`);
   if (!res.ok) return [];
   const data = (await res.json()) as any;
   const items = data?.sections?.Products ?? [];
@@ -85,7 +90,6 @@ function deduplicar(resultados: ResultadoBusqueda[]): ResultadoBusqueda[] {
     if (!existente) {
       mapa.set(clave, r);
     } else if (!existente.imagen && r.imagen) {
-      // conserva el que tiene imagen
       mapa.set(clave, r);
     }
   }
@@ -97,6 +101,7 @@ export async function GET(req: NextRequest) {
   if (!q) return NextResponse.json({ resultados: [] });
 
   const esEan = /^\d{8,13}$/.test(q);
+  console.log(`[buscar] query: "${q}" esEan: ${esEan}`);
 
   const settled = await Promise.allSettled([
     buscarVtex('jumbo', q, esEan),
@@ -107,8 +112,16 @@ export async function GET(req: NextRequest) {
 
   const todos: ResultadoBusqueda[] = [];
   for (const s of settled) {
-    if (s.status === 'fulfilled') todos.push(...s.value);
+    if (s.status === 'fulfilled') {
+      console.log(`[buscar] ${s.value.length} resultados de proveedor`);
+      todos.push(...s.value);
+    } else {
+      console.error('[buscar] error:', s.reason);
+    }
   }
 
-  return NextResponse.json({ resultados: deduplicar(todos) });
+  console.log(`[buscar] total antes dedup: ${todos.length}`);
+  const final = deduplicar(todos);
+  console.log(`[buscar] final: ${final.length}`);
+  return NextResponse.json({ resultados: final });
 }
