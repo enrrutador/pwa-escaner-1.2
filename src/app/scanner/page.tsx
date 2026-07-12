@@ -115,8 +115,7 @@ function ScannerInner() {
             <div style={{ width: 40 }} />
           </div>
 
-          {/* Viewfinder - ahora renderizado DENTRO de BarcodeScanner */}
-          <div className="scan-main">
+          {/* Viewfinder - renderizado DENTRO de BarcodeScanner */}
             {activo && (
               <BarcodeScanner
                 ref={scannerRef}
@@ -125,7 +124,6 @@ function ScannerInner() {
                 cooldownMs={1500}
               />
             )}
-          </div>
 
           {/* Footer */}
           <div className="scan-foot">
