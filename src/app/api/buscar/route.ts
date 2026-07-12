@@ -1,6 +1,6 @@
 // src/app/api/buscar/route.ts
 // GET /api/buscar?q=<codigo|texto>
-// 4 proveedores VTEX + MercadoLibre, dedup, max 8.
+// Uses VTEX intelligent search (works for EAN + text) + Coto Constructor.io
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { ResultadoBusqueda } from '@/types';
@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
 
 const TIMEOUT_MS = 6000;
 
-const VTEX_BASES: Record<string, string> = {
+const VTEX_STORES: Record<string, string> = {
   jumbo: 'https://www.jumbo.com.ar',
   carrefour: 'https://www.carrefour.com.ar',
   farmacity: 'https://www.farmacity.com',
@@ -32,39 +32,34 @@ function normalizar(nombre: string): string {
   return nombre.trim().toLowerCase().slice(0, 30);
 }
 
-async function buscarVtex(
+/** VTEX intelligent search — works for both EAN and text queries */
+async function buscarVtexIntelligent(
   fuente: string,
   base: string,
   q: string,
-  esEan: boolean,
 ): Promise<ResultadoBusqueda[]> {
   try {
-    // For EAN: try path-based first (works on all VTEX stores)
-    // For text: use ?ft= query
-    const url = esEan
-      ? `${base}/api/catalog_system/pub/products/search/${encodeURIComponent(q)}`
-      : `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
-
-    console.log(`[buscar] ${fuente} -> ${url}`);
+    const url = `${base}/api/io/_v/api/intelligent-search/product_search/${encodeURIComponent(q)}?locale=es-AR`;
+    console.log(`[buscar] ${fuente} intelligent -> ${url}`);
     const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
     console.log(`[buscar] ${fuente} status: ${res.status}`);
     if (!res.ok) return [];
-    const data = (await res.json()) as any[];
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log(`[buscar] ${fuente} 0 items`);
-      return [];
-    }
-    console.log(`[buscar] ${fuente} ${data.length} items`);
 
-    return data.map((p) => {
+    const data = (await res.json()) as any;
+    const products = data?.products ?? [];
+    console.log(`[buscar] ${fuente} ${products.length} items`);
+    if (products.length === 0) return [];
+
+    return products.slice(0, 4).map((p: any) => {
       const item = p.items?.[0];
       const seller = item?.sellers?.[0]?.commertialOffer;
+      const img = item?.images?.[0]?.imageUrl ?? p.items?.[0]?.images?.[0]?.imageUrl;
       return {
-        nombre: p.productName ?? p.productTitle ?? 'Sin nombre',
+        nombre: p.productName ?? 'Sin nombre',
         codigoBarras: item?.ean ?? undefined,
-        imagen: item?.images?.[0]?.imageUrl ?? undefined,
+        imagen: img ?? undefined,
         descripcion: p.description ?? undefined,
-        precio: seller?.Price ?? undefined,
+        precio: seller?.Price ?? p.priceRange?.sellingPrice?.lowPrice ?? undefined,
         marca: p.brand ?? undefined,
         fuente,
       } satisfies ResultadoBusqueda;
@@ -75,10 +70,45 @@ async function buscarVtex(
   }
 }
 
+/** Fallback: VTEX catalog search (text only) */
+async function buscarVtexCatalog(
+  fuente: string,
+  base: string,
+  q: string,
+): Promise<ResultadoBusqueda[]> {
+  try {
+    const url = `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
+    console.log(`[buscar] ${fuente} catalog -> ${url}`);
+    const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
+    console.log(`[buscar] ${fuente} catalog status: ${res.status}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as any[];
+    if (!Array.isArray(data) || data.length === 0) return [];
+    console.log(`[buscar] ${fuente} catalog ${data.length} items`);
+
+    return data.slice(0, 4).map((p) => {
+      const item = p.items?.[0];
+      const seller = item?.sellers?.[0]?.commertialOffer;
+      return {
+        nombre: p.productName ?? 'Sin nombre',
+        codigoBarras: item?.ean ?? undefined,
+        imagen: item?.images?.[0]?.imageUrl ?? undefined,
+        descripcion: p.description ?? undefined,
+        precio: seller?.Price ?? undefined,
+        marca: p.brand ?? undefined,
+        fuente,
+      } satisfies ResultadoBusqueda;
+    });
+  } catch (e) {
+    console.error(`[buscar] ${fuente} catalog error:`, e);
+    return [];
+  }
+}
+
 async function buscarCoto(q: string): Promise<ResultadoBusqueda[]> {
   if (!COTO_KEY) return [];
   try {
-    const url = `${COTO_AUTOCOMPLETE}/${encodeURIComponent(q)}?key=${COTO_KEY}&num_results=1`;
+    const url = `${COTO_AUTOCOMPLETE}/${encodeURIComponent(q)}?key=${COTO_KEY}&num_results=3`;
     console.log(`[buscar] coto -> ${url}`);
     const res = await fetchConTimeout(url);
     console.log(`[buscar] coto status: ${res.status}`);
@@ -95,32 +125,6 @@ async function buscarCoto(q: string): Promise<ResultadoBusqueda[]> {
     }));
   } catch (e) {
     console.error('[buscar] coto error:', e);
-    return [];
-  }
-}
-
-async function buscarMercadoLibre(q: string): Promise<ResultadoBusqueda[]> {
-  try {
-    const url = `https://api.mercadolibre.com/sites/MLA/search?q=${encodeURIComponent(q)}&limit=3`;
-    console.log(`[buscar] mercadolibre -> ${url}`);
-    const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
-    console.log(`[buscar] mercadolibre status: ${res.status}`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as any;
-    const results = data?.results ?? [];
-    console.log(`[buscar] mercadolibre ${results.length} items`);
-
-    return results.map((r: any) => ({
-      nombre: r.title ?? 'Sin nombre',
-      codigoBarras: undefined,
-      imagen: r.thumbnail?.replace('http://', 'https://')?.replace('-I.jpg', '-O.jpg') ?? undefined,
-      descripcion: undefined,
-      precio: r.price ?? undefined,
-      marca: r.attributes?.find((a: any) => a.id === 'BRAND')?.value_name ?? undefined,
-      fuente: 'mercadolibre',
-    }));
-  } catch (e) {
-    console.error('[buscar] mercadolibre error:', e);
     return [];
   }
 }
@@ -146,12 +150,13 @@ export async function GET(req: NextRequest) {
   const esEan = /^\d{8,13}$/.test(q);
   console.log(`[buscar] query: "${q}" esEan: ${esEan}`);
 
+  // Try intelligent search first (handles both EAN and text)
+  // Then fall back to catalog search if needed
   const settled = await Promise.allSettled([
-    buscarVtex('jumbo', VTEX_BASES.jumbo, q, esEan),
-    buscarVtex('carrefour', VTEX_BASES.carrefour, q, esEan),
-    buscarVtex('farmacity', VTEX_BASES.farmacity, q, esEan),
+    buscarVtexIntelligent('jumbo', VTEX_STORES.jumbo, q),
+    buscarVtexIntelligent('carrefour', VTEX_STORES.carrefour, q),
+    buscarVtexIntelligent('farmacity', VTEX_STORES.farmacity, q),
     buscarCoto(q),
-    buscarMercadoLibre(q),
   ]);
 
   const todos: ResultadoBusqueda[] = [];
@@ -161,6 +166,19 @@ export async function GET(req: NextRequest) {
       todos.push(...s.value);
     } else {
       console.error('[buscar] error:', s.reason);
+    }
+  }
+
+  // If no results from intelligent search, try catalog fallback
+  if (todos.length === 0) {
+    console.log('[buscar] intelligent search vacío, intentando catalog fallback');
+    const fallback = await Promise.allSettled([
+      buscarVtexCatalog('jumbo', VTEX_STORES.jumbo, q),
+      buscarVtexCatalog('carrefour', VTEX_STORES.carrefour, q),
+      buscarVtexCatalog('farmacity', VTEX_STORES.farmacity, q),
+    ]);
+    for (const s of fallback) {
+      if (s.status === 'fulfilled') todos.push(...s.value);
     }
   }
 
