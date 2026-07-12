@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { formatMoney } from '@/lib/utils';
 import { useProductos } from '@/hooks/useProductos';
 import { dbAlertas } from '@/lib/db-alertas';
 import { dbConteos } from '@/lib/db-conteos';
 import { dbEscaneos } from '@/lib/db-escaneos';
+import { dbProductos } from '@/lib/db-productos';
 import { useAuthStore } from '@/store/authStore';
 
 function StatIcon() {
@@ -20,10 +22,27 @@ function StatIcon() {
 
 export default function Dashboard() {
   const { usuario, inicializado } = useAuthStore();
+  const router = useRouter();
   const { productos, cargando: cargandoProd } = useProductos({ limite: 100 });
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [conteosAbiertos, setConteosAbiertos] = useState(0);
   const [ultimosEscaneos, setUltimosEscaneos] = useState<Array<{ id: string; codigo: string; nombre?: string; imagen?: string | null; productoId?: string | null; createdAt: number }>>([]);
+
+  const abrirEscaneo = async (e: { id: string; codigo: string; productoId?: string | null }) => {
+    // Si ya tiene productoId, ir al detalle
+    if (e.productoId) {
+      router.push(`/producto/${e.productoId}/editar`);
+      return;
+    }
+    // Si no, buscar el producto por código en la BD local
+    const producto = await dbProductos.obtenerPorCodigoBarras(e.codigo);
+    if (producto) {
+      router.push(`/producto/${producto.id}/editar`);
+    } else {
+      // Si no existe, ir a nuevo producto con el código
+      router.push(`/inventario/nuevo?cod=${encodeURIComponent(e.codigo)}`);
+    }
+  };
 
   useEffect(() => {
     if (!inicializado) return;
@@ -137,11 +156,11 @@ export default function Dashboard() {
             </div>
           ) : (
             ultimosEscaneos.map((e) => (
-              <Link
+              <button
                 key={e.id}
-                href={e.productoId ? `/producto/${e.productoId}` : `/inventario/nuevo?cod=${e.codigo}&nom=${encodeURIComponent(e.nombre || '')}&img=${e.imagen || ''}`}
+                onClick={() => abrirEscaneo(e)}
                 className="scan-row"
-                style={{ textDecoration: 'none', color: 'inherit' }}
+                style={{ textDecoration: 'none', color: 'inherit', width: '100%', textAlign: 'left' }}
               >
                 <div className="thumb">
                   {e.imagen ? (
@@ -155,7 +174,7 @@ export default function Dashboard() {
                   <div className="time">{new Date(e.createdAt).toLocaleDateString('es-AR')}</div>
                 </div>
                 <div className="sku">#{e.codigo}</div>
-              </Link>
+              </button>
             ))
           )}
         </div>
