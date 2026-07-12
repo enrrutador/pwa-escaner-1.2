@@ -5,7 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ResultadoBusqueda } from '@/types';
 
-export const runtime = 'edge';
+// Usar Node.js runtime para fetch externo sin problemas de CORS/edge
+export const runtime = 'nodejs';
 
 const TIMEOUT_MS = 5000;
 

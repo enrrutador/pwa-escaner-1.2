@@ -18,24 +18,23 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scanningRef = useRef(false);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // Guard para evitar múltiples lecturas del mismo código
   const handleScan = useCallback((texto: string) => {
     if (!scanningRef.current) {
       scanningRef.current = true;
+      console.log('[Scanner] Código detectado:', texto);
       onScan(texto);
-      // Resetear después de un tiempo para permitir nuevo escaneo si la cámara sigue activa
       setTimeout(() => { scanningRef.current = false; }, 2000);
     }
   }, [onScan]);
 
   useImperativeHandle(ref, () => ({
     alternarTorch: async () => {
-      const stream = videoRef.current?.srcObject as MediaStream | null;
-      if (!stream) return;
-      const track = stream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities() as any;
-      if (capabilities.torch) {
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track) return;
+      const caps = track.getCapabilities() as any;
+      if (caps.torch) {
         try {
           await track.applyConstraints({ advanced: [{ torch: !torchState }] } as any);
           setTorchState(!torchState);
@@ -55,8 +54,16 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       if (!activo || !videoRef.current) return;
 
       try {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+          video: { 
+            facingMode: 'environment', 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 }
+          }
         });
 
         if (!isMounted) {
@@ -64,12 +71,19 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
           return;
         }
 
+        streamRef.current = stream;
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        
+        // Esperar a que el video esté listo
+        await new Promise<void>((resolve, reject) => {
+          if (!videoRef.current) return reject();
+          videoRef.current.onloadedmetadata = () => resolve();
+          videoRef.current.onerror = reject;
+          videoRef.current.play().catch(reject);
+        });
 
         if (!readerRef.current) {
           readerRef.current = new BrowserMultiFormatReader();
-          // Configurar solo formatos de uso común en retail para mayor velocidad
           const hints = new Map();
           hints.set('possible_formats', [
             BarcodeFormat.EAN_13,
@@ -88,14 +102,20 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
         controlsRef.current = await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
-          (result, err, controls) => {
+          (result, err) => {
             if (result) {
               handleScan(result.getText());
             }
+            // Log errors occasionally
+            if (err && err.name !== 'NotFoundException') {
+              console.debug('[Scanner] ZXing:', err.name);
+            }
           }
         );
+
+        console.log('[Scanner] Cámara iniciada y escaneando');
       } catch (err) {
-        console.error('Error cámara:', err);
+        console.error('[Scanner] Error iniciando cámara:', err);
       }
     }
 
@@ -104,9 +124,11 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
         controlsRef.current.stop();
         controlsRef.current = null;
       }
-      if (videoRef.current?.srcObject) {
-        const s = videoRef.current.srcObject as MediaStream;
-        s.getTracks().forEach(t => t.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
     }
@@ -127,7 +149,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
   return (
     <video
       ref={videoRef}
-      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-xl)' }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
       playsInline
       muted
     />
