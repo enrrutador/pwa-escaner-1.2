@@ -130,30 +130,31 @@ function ScannerInner() {
             <div style={{ width: 40 }} />
           </div>
           <div className="scan-main">
-            {cameraReady && (
-              <>
-                <div className="viewfinder">
-                  <div className="corner tl" />
-                  <div className="corner tr" />
-                  <div className="corner bl" />
-                  <div className="corner br" />
-                  <div className="laser" />
-                  <BarcodeScanner 
-                    ref={scannerRef} 
-                    activo={activo} 
-                    onScan={onScan}
-                    onCameraReady={() => setCameraReady(true)}
-                  />
-                </div>
-                <div className="scan-hint"><span>Alineá el código de barras dentro del marco</span></div>
-              </>
-            )}
+            <div className="viewfinder">
+              <div className="corner tl" />
+              <div className="corner tr" />
+              <div className="corner bl" />
+              <div className="corner br" />
+              <div className="laser" />
+              <BarcodeScanner 
+                ref={scannerRef} 
+                activo={activo} 
+                onScan={onScan}
+                onCameraReady={() => setCameraReady(true)}
+              />
+            </div>
             {!cameraReady && activo && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
+              <div style={{ 
+                position: 'absolute', inset: 0, 
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                background: 'rgba(18, 18, 22, 0.9)', zIndex: 10,
+                gap: 16
+              }}>
                 <div style={{ width: 48, height: 48, border: '3px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Iniciando cámara...</span>
               </div>
             )}
+            <div className="scan-hint"><span>Alineá el código de barras dentro del marco</span></div>
           </div>
           <div className="scan-foot">
             <button className={`flash${torchOn ? ' on' : ''}`} onClick={() => {
