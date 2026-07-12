@@ -295,6 +295,22 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       apagarCamara: apagarCamaraCompleto,
     }), [alternarTorch, torchAvailable, apagarCamaraCompleto]);
 
+    // Viewfinder UI (esquinas, laser, hint) — renderizado SIEMPRE encima del video
+    const viewfinderUI = (
+      <div className="viewfinder">
+        <div className="corner tl" />
+        <div className="corner tr" />
+        <div className="corner bl" />
+        <div className="corner br" />
+        <div className="laser" />
+        {cameraState === 'active' && (
+          <div className="scan-hint">
+            <span>Alineá el código de barras dentro del marco</span>
+          </div>
+        )}
+      </div>
+    );
+
     return (
       <div className="scanner-camera-container">
         <video
@@ -305,8 +321,11 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           className="absolute inset-0 w-full h-full object-cover"
         />
 
+        {/* Viewfinder SIEMPRE visible cuando activo=true (encima del video) */}
+        {activo && viewfinderUI}
+
         {cameraState === 'denied' && (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-black/90">
+          <div className="absolute inset-0 z-20 grid place-items-center bg-black/90">
             <div className="text-center px-6 max-w-[280px]">
               <div className="text-[48px] text-danger mb-3 block" style={{ fontFamily: 'system-ui' }}>📷</div>
               <p className="text-sm font-semibold mb-2">Cámara bloqueada</p>
@@ -318,7 +337,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         )}
 
         {cameraState === 'error' && (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-black/90">
+          <div className="absolute inset-0 z-20 grid place-items-center bg-black/90">
             <div className="text-center px-6 max-w-[280px]">
               <div className="text-[48px] text-warn mb-3 block" style={{ fontFamily: 'system-ui' }}>⚠️</div>
               <p className="text-sm font-semibold mb-2">Cámara no disponible</p>

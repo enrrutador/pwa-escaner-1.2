@@ -22,7 +22,6 @@ function ScannerInner() {
 
   const scannerRef = useRef<BarcodeScannerHandle>(null);
 
-  // Cambio 2: beforeunload + popstate safety net
   useEffect(() => {
     const cleanup = () => {
       scannerRef.current?.apagarCamara();
@@ -55,7 +54,6 @@ function ScannerInner() {
           productoId: producto.id, nombreProducto: producto.nombre,
           imagen: producto.imagen ?? null,
         });
-        // Cambio 1: apagar cámara explícitamente antes de navegar
         scannerRef.current?.apagarCamara();
         router.push(`/producto/${producto.id}/editar`);
         return;
@@ -117,26 +115,16 @@ function ScannerInner() {
             <div style={{ width: 40 }} />
           </div>
 
-          {/* Viewfinder */}
+          {/* Viewfinder - ahora renderizado DENTRO de BarcodeScanner */}
           <div className="scan-main">
-            <div className="viewfinder">
-              <div className="corner tl" />
-              <div className="corner tr" />
-              <div className="corner bl" />
-              <div className="corner br" />
-              <div className="laser" />
-              {activo && (
-                  <BarcodeScanner
-                    ref={scannerRef}
-                    activo={activo}
-                    onScan={onScan}
-                    cooldownMs={1500}
-                  />
-                )}
-            </div>
-            <div className="scan-hint">
-              <span>{buscando ? 'Buscando producto...' : 'Alineá el código de barras dentro del marco'}</span>
-            </div>
+            {activo && (
+              <BarcodeScanner
+                ref={scannerRef}
+                activo={activo}
+                onScan={onScan}
+                cooldownMs={1500}
+              />
+            )}
           </div>
 
           {/* Footer */}
