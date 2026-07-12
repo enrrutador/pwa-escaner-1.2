@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, IScannerControls, BarcodeFormat } from '@zxing/browser';
 
 interface BarcodeScannerProps {
@@ -14,11 +14,10 @@ export interface BarcodeScannerHandle {
 
 export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(({ onScan, activo }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [torchState, setTorchState] = useState(false);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scanningRef = useRef(false);
-  const streamRef = useRef<MediaStream | null>(null);
+  const torchRef = useRef(false);
 
   const handleScan = useCallback((texto: string) => {
     if (!scanningRef.current) {
@@ -31,13 +30,16 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
 
   useImperativeHandle(ref, () => ({
     alternarTorch: async () => {
-      const track = streamRef.current?.getVideoTracks()[0];
+      const video = videoRef.current;
+      if (!video?.srcObject) return;
+      const stream = video.srcObject as MediaStream;
+      const track = stream.getVideoTracks()[0];
       if (!track) return;
       const caps = track.getCapabilities() as any;
       if (caps.torch) {
         try {
-          await track.applyConstraints({ advanced: [{ torch: !torchState }] } as any);
-          setTorchState(!torchState);
+          torchRef.current = !torchRef.current;
+          await track.applyConstraints({ advanced: [{ torch: torchRef.current }] } as any);
         } catch (err) {
           console.error('Error flash:', err);
         }
@@ -45,7 +47,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
         console.warn('Flash no soportado');
       }
     }
-  }), [torchState]);
+  }), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,33 +56,10 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       if (!activo || !videoRef.current) return;
 
       try {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
+        if (controlsRef.current) {
+          controlsRef.current.stop();
+          controlsRef.current = null;
         }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: 'environment', 
-            width: { ideal: 1280 }, 
-            height: { ideal: 720 }
-          }
-        });
-
-        if (!isMounted) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        videoRef.current.srcObject = stream;
-        
-        // Esperar a que el video esté listo
-        await new Promise<void>((resolve, reject) => {
-          if (!videoRef.current) return reject();
-          videoRef.current.onloadedmetadata = () => resolve();
-          videoRef.current.onerror = reject;
-          videoRef.current.play().catch(reject);
-        });
 
         if (!readerRef.current) {
           readerRef.current = new BrowserMultiFormatReader();
@@ -99,14 +78,15 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
 
         scanningRef.current = false;
 
+        // Use ZXing to directly handle camera + decoding (no dual stream)
         controlsRef.current = await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
           (result, err) => {
+            if (!isMounted) return;
             if (result) {
               handleScan(result.getText());
             }
-            // Log errors occasionally
             if (err && err.name !== 'NotFoundException') {
               console.debug('[Scanner] ZXing:', err.name);
             }
@@ -123,10 +103,6 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       if (controlsRef.current) {
         controlsRef.current.stop();
         controlsRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
       }
       if (videoRef.current) {
         videoRef.current.srcObject = null;
