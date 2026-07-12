@@ -281,9 +281,6 @@ main {
 .scan-cam { position: absolute; inset: 0; background:
   radial-gradient(120% 90% at 50% 20%, oklch(30% 0.04 262), oklch(14% 0.02 262));
   filter: blur(1px); }
-.scan-cam::after { content: ""; position: absolute; inset: 0;
-  background-image: repeating-linear-gradient(115deg, oklch(26% 0.03 262) 0 40px, oklch(22% 0.03 262) 40px 82px);
-  opacity: .5; }
 .scan-ui { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; }
 .scan-top { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; height: 56px;
   background: oklch(16% 0.03 262 / .6); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line-soft); }
