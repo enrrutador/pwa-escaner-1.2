@@ -6,6 +6,7 @@ import { persist } from 'zustand/middleware';
 import type { Usuario, Permiso } from '@/types';
 import { PERMISOS_POR_ROL } from '@/types';
 import { dbUsuarios } from '@/lib/db-usuarios';
+import { seedSiVacio } from '@/lib/seed';
 
 interface AuthState {
   usuario: Usuario | null;
@@ -24,12 +25,24 @@ export const useAuthStore = create<AuthState>()(
       inicializado: false,
 
       async inicializar() {
+        // Seed inicial si la DB está vacía
+        await seedSiVacio();
+
         // Rehidrata usuario persistido validando que siga activo en DB.
         const actual = get().usuario;
         if (actual) {
           const fresco = await dbUsuarios.obtener(actual.id);
           set({ usuario: fresco?.activo ? fresco : null });
         }
+
+        // Si no hay usuario logueado, auto-login como admin
+        if (!get().usuario) {
+          const admin = await dbUsuarios.obtenerPorNombre('Marcelo');
+          if (admin?.activo) {
+            set({ usuario: admin });
+          }
+        }
+
         set({ inicializado: true });
       },
 
