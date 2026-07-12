@@ -15,6 +15,7 @@ function ScannerInner() {
   const { usuario } = useAuthStore();
   
   const [activo, setActivo] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [codigo, setCodigo] = useState('');
   const [resultado, setResultado] = useState<{ producto: any; fuente: string } | null>(null);
   const [historial, setHistorial] = useState<any[]>([]);
@@ -44,6 +45,7 @@ function ScannerInner() {
     setResultado(null);
     setCodigo(codigoDetectado);
     setActivo(false);
+    setCameraReady(false);
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 300);
 
@@ -121,26 +123,37 @@ function ScannerInner() {
         <div className="scan-cam" />
         <div className="scan-ui">
           <div className="scan-top">
-            <button className="icon-btn" onClick={() => setActivo(false)}>
+            <button className="icon-btn" onClick={() => { setActivo(false); setCameraReady(false); }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </button>
             <h1>Escanear producto</h1>
             <div style={{ width: 40 }} />
           </div>
           <div className="scan-main">
-            <div className="viewfinder">
-              <div className="corner tl" />
-              <div className="corner tr" />
-              <div className="corner bl" />
-              <div className="corner br" />
-              <div className="laser" />
-              <BarcodeScanner 
-                ref={scannerRef} 
-                activo={activo} 
-                onScan={onScan} 
-              />
-            </div>
-            <div className="scan-hint"><span>Alineá el código de barras dentro del marco</span></div>
+            {cameraReady && (
+              <>
+                <div className="viewfinder">
+                  <div className="corner tl" />
+                  <div className="corner tr" />
+                  <div className="corner bl" />
+                  <div className="corner br" />
+                  <div className="laser" />
+                  <BarcodeScanner 
+                    ref={scannerRef} 
+                    activo={activo} 
+                    onScan={onScan}
+                    onCameraReady={() => setCameraReady(true)}
+                  />
+                </div>
+                <div className="scan-hint"><span>Alineá el código de barras dentro del marco</span></div>
+              </>
+            )}
+            {!cameraReady && activo && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
+                <div style={{ width: 48, height: 48, border: '3px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Iniciando cámara...</span>
+              </div>
+            )}
           </div>
           <div className="scan-foot">
             <button className={`flash${torchOn ? ' on' : ''}`} onClick={() => {
@@ -149,7 +162,7 @@ function ScannerInner() {
             }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </button>
-            <button className="manual" onClick={() => setActivo(false)}>
+            <button className="manual" onClick={() => { setActivo(false); setCameraReady(false); }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
               Entrada manual
             </button>

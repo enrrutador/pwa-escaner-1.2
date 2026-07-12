@@ -1,23 +1,25 @@
 'use client';
 
-import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useState } from 'react';
 import { BrowserMultiFormatReader, IScannerControls, BarcodeFormat } from '@zxing/browser';
 
 interface BarcodeScannerProps {
   onScan: (codigo: string) => void;
   activo: boolean;
+  onCameraReady?: () => void;
 }
 
 export interface BarcodeScannerHandle {
   alternarTorch: () => Promise<void>;
 }
 
-export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(({ onScan, activo }, ref) => {
+export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(({ onScan, activo, onCameraReady }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scanningRef = useRef(false);
   const torchRef = useRef(false);
+  const [cameraReady, setCameraReady] = useState(false);
 
   const handleScan = useCallback((texto: string) => {
     if (!scanningRef.current) {
@@ -93,6 +95,24 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
           }
         );
 
+        // Camera is streaming - wait for video to be playing
+        await new Promise<void>((resolve) => {
+          const video = videoRef.current;
+          if (!video) return resolve();
+          if (video.readyState >= 2) {
+            resolve();
+          } else {
+            video.onloadeddata = () => resolve();
+            video.onerror = () => resolve();
+            video.play().catch(() => resolve());
+          }
+        });
+
+        if (isMounted) {
+          setCameraReady(true);
+          onCameraReady?.();
+        }
+
         console.log('[Scanner] Cámara iniciada y escaneando');
       } catch (err) {
         console.error('[Scanner] Error iniciando cámara:', err);
@@ -107,6 +127,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+      setCameraReady(false);
     }
 
     if (activo) {
@@ -120,12 +141,12 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       isMounted = false;
       stop();
     };
-  }, [activo, handleScan]);
+  }, [activo, handleScan, onCameraReady]);
 
   return (
     <video
       ref={videoRef}
-      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: cameraReady ? 1 : 0 }}
       playsInline
       muted
     />

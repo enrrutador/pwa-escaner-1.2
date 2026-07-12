@@ -26,7 +26,7 @@ export default function Dashboard() {
   const { productos, cargando: cargandoProd } = useProductos({ limite: 100 });
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [conteosAbiertos, setConteosAbiertos] = useState(0);
-  const [ultimosEscaneos, setUltimosEscaneos] = useState<Array<{ id: string; codigo: string; nombre?: string; imagen?: string | null; productoId?: string | null; createdAt: number }>>([]);
+  const [ultimosEscaneos, setUltimosEscaneos] = useState<Array<{ id: string; codigo: string; nombreProducto?: string; imagen?: string | null; productoId?: string | null; createdAt: number }>>([]);
 
   const abrirEscaneo = async (e: { id: string; codigo: string; productoId?: string | null }) => {
     // Si ya tiene productoId, ir al detalle
@@ -48,7 +48,7 @@ export default function Dashboard() {
     if (!inicializado) return;
     dbAlertas.contarNoLeidas().then(setAlertasNoLeidas);
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
-    dbEscaneos.listar({ limite: 5 }).then(setUltimosEscaneos).catch(() => {});
+    dbEscaneos.listar({ limite: 5 }).then((escaneos) => setUltimosEscaneos(escaneos as any)).catch(() => {});
   }, [inicializado]);
 
   if (!inicializado) {
@@ -170,8 +170,10 @@ export default function Dashboard() {
                   )}
                 </div>
                 <div className="info">
-                  <div className="name">{e.nombre || e.codigo}</div>
-                  <div className="time">{new Date(e.createdAt).toLocaleDateString('es-AR')}</div>
+                  <div className="name">{e.nombreProducto || e.codigo}</div>
+                  <div className="time">
+                    {new Date(e.createdAt).toLocaleDateString('es-AR')} · {new Date(e.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
                 </div>
                 <div className="sku">#{e.codigo}</div>
               </button>
