@@ -7,12 +7,16 @@ import { useProductos } from '@/hooks/useProductos';
 import { dbAlertas } from '@/lib/db-alertas';
 import { dbConteos } from '@/lib/db-conteos';
 import { useAuthStore } from '@/store/authStore';
+import { useUIStore } from '@/store/uiStore';
 
 export default function Dashboard() {
-  const { usuario, inicializado, inicializar } = useAuthStore();
+  const { usuario, inicializado, inicializar, login } = useAuthStore();
+  const { mostrarToast } = useUIStore();
   const { productos, cargando: cargandoProd, recargar: recargarProd } = useProductos({ limite: 5 });
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [conteosAbiertos, setConteosAbiertos] = useState(0);
+  const [loginForm, setLoginForm] = useState({ nombre: '', pin: '' });
+  const [logueando, setLogueando] = useState(false);
 
   useEffect(() => {
     inicializar();
@@ -24,7 +28,6 @@ export default function Dashboard() {
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
   }, [inicializado]);
 
-  // Show loading skeleton while initializing
   if (!inicializado) {
     return (
       <div className="space-y-6">
@@ -44,7 +47,62 @@ export default function Dashboard() {
     );
   }
 
-  if (!usuario) return null;
+  if (!usuario) {
+    return (
+      <div className="max-w-md mx-auto mt-20 space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">StockMaster</h1>
+          <p className="text-zinc-400">Iniciar sesión</p>
+        </div>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setLogueando(true);
+            const res = await login(loginForm.nombre, loginForm.pin);
+            if (!res.ok) {
+              mostrarToast('error', res.error || 'Error al iniciar sesión');
+            }
+            setLogueando(false);
+          }}
+          className="space-y-4"
+        >
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">Usuario</label>
+            <input
+              type="text"
+              value={loginForm.nombre}
+              onChange={(e) => setLoginForm({ ...loginForm, nombre: e.target.value })}
+              className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent"
+              placeholder="Marcelo"
+              required
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">PIN</label>
+            <input
+              type="password"
+              value={loginForm.pin}
+              onChange={(e) => setLoginForm({ ...loginForm, pin: e.target.value })}
+              className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent"
+              placeholder="1234"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={logueando}
+            className="w-full py-3 bg-cyan-500 text-navy-950 font-semibold rounded-xl hover:bg-cyan-400 disabled:opacity-50"
+          >
+            {logueando ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+        <p className="text-center text-zinc-500 text-sm">
+          Demo: <strong>Marcelo</strong> / <strong>1234</strong>
+        </p>
+      </div>
+    );
+  }
 
   const stats = [
     { label: 'Productos', valor: productos.length, icon: '📦', color: 'border-l-4 border-cyan-500' },
