@@ -40,12 +40,6 @@ html, body {
   overflow-x: hidden;
   overscroll-behavior-x: none;
 }
-body { 
-  overflow-x: hidden;
-  position: fixed;
-  inset: 0;
-  width: 100%;
-}
 
 body {
   font-family: Inter, system-ui, sans-serif;
