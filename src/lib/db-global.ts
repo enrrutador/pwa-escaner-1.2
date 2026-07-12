@@ -5,29 +5,22 @@ import { db } from './db';
 
 export const dbGlobal = {
   async limpiarTodo(): Promise<void> {
-    await db.transaction(
-      'rw',
-      db.productos,
-      db.ubicaciones,
-      db.movimientos,
-      db.usuarios,
-      db.conteos,
-      db.conteoItems,
-      db.alertas,
-      db.escaneos,
-      async () => {
-        await Promise.all([
-          db.productos.clear(),
-          db.ubicaciones.clear(),
-          db.movimientos.clear(),
-          db.usuarios.clear(),
-          db.conteos.clear(),
-          db.conteoItems.clear(),
-          db.alertas.clear(),
-          db.escaneos.clear(),
-        ]);
-      },
-    );
+    await db.transaction('rw', db.productos, db.ubicaciones, db.movimientos, db.usuarios, async () => {
+      await Promise.all([
+        db.productos.clear(),
+        db.ubicaciones.clear(),
+        db.movimientos.clear(),
+        db.usuarios.clear(),
+      ]);
+    });
+    await db.transaction('rw', db.conteos, db.conteoItems, db.alertas, db.escaneos, async () => {
+      await Promise.all([
+        db.conteos.clear(),
+        db.conteoItems.clear(),
+        db.alertas.clear(),
+        db.escaneos.clear(),
+      ]);
+    });
   },
 
   async exportarTodo() {

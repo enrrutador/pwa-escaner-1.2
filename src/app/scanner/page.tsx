@@ -96,7 +96,6 @@ export default function Scanner() {
 
     try {
       // Buscar en BD local
-      const local
       const producto = await dbProductos.obtenerPorCodigoBarras(codigo) || await dbProductos.obtenerPorPlu(codigo);
 
       if (producto) {
@@ -286,9 +285,7 @@ export default function Scanner() {
               {historial.map((e) => (
                 <li key={e.id} className="p-3 flex items-center justify-between hover:bg-navy-800/50">
                   <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${
-                      e.resultado === 'encontrado' ? 'bg-green-400' : 'bg-red-400'
-                    }`} />
+                    <span className={`w-2 h-2 rounded-full ${e.resultado === 'encontrado' ? 'bg-green-400' : 'bg-red-400'}`} />
                     <div>
                       <p className="font-mono text-sm">{e.codigo}</p>
                       <p className="text-xs text-zinc-500">{e.nombreProducto || 'Sin nombre'}</p>
