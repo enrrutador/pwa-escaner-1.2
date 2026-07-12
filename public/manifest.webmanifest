@@ -1,41 +1,56 @@
 {
-  "name": "StockMaster",
+  "name": "StockMaster - Inventario",
   "short_name": "StockMaster",
-  "description": "Backend + lógica del inventario PWA, con la estética navy/cyan/naranja portada a React.",
+  "description": "Gestión de inventario PWA offline-first con escáner de código de barras.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b1220",
   "theme_color": "#0b1220",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/icons/icon-192.svg",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/svg+xml",
+      "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/icon-512.svg",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192-maskable.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ],
-  "categories": ["business", "productivity"],
   "shortcuts": [
     {
-      "name": "Escanear",
+      "name": "Escanear código",
       "short_name": "Escanear",
-      "description": "Abrir escáner de códigos",
-      "url": "/scanner",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "description": "Abrir escáner de códigos de barras",
+      "url": "/scanner?auto=1",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     },
     {
       "name": "Inventario",
       "short_name": "Inventario",
-      "description": "Ver inventario",
+      "description": "Ver productos en inventario",
       "url": "/inventario",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     }
   ]
 }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="oklch(18% 0.03 262)"/>
+  <circle cx="256" cy="215.04" r="112.64" fill="oklch(72% 0.13 258)" opacity="0.15"/>
+  <text x="50%" y="46%" text-anchor="middle" dominant-baseline="central" 
+        font-family="Inter,system-ui,sans-serif" font-weight="800" 
+        font-size="163.84" fill="oklch(72% 0.13 258)">S</text>
+  <text x="50%" y="72%" text-anchor="middle" dominant-baseline="central" 
+        font-family="Inter,system-ui,sans-serif" font-weight="700" 
+        font-size="43.52" fill="oklch(92% 0.03 262)" letter-spacing="4.096">STOCKMASTER</text>
+</svg>
