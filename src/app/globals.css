@@ -286,14 +286,14 @@ main {
   background: oklch(16% 0.03 262 / .6); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line-soft); }
 .scan-top h1 { font-size: 1.05rem; font-weight: 700; }
 .scan-main { flex: 1; display: grid; place-items: center; position: relative; padding: 20px; }
-.viewfinder { 
-  position: relative; 
-  width: 100%; max-width: 380px; aspect-ratio: 1; border-radius: var(--r-xl);
-  box-shadow: 0 0 0 9999px oklch(12% 0.02 262 / .72); 
+.scanner-camera-container { position: absolute; inset: 0; }
+.viewfinder {
+  position: relative;
+  width: 100%; max-width: 380px; aspect-ratio: 1;
+  margin: auto; /* centrado horizontal + vertical en container absolute inset-0 */
+  border-radius: var(--r-xl);
   overflow: hidden;
 }
-.viewfinder video { width: 100%; height: 100%; object-fit: cover; }
-.scanner-camera-container { position: absolute; inset: 0; }
 .scanner-pulse { animation: scanner-pulse 1.2s ease-in-out infinite; }
 @keyframes scanner-pulse { 0%,100% { opacity: .3; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
 .corner { position: absolute; width: 48px; height: 48px; border: 4px solid var(--primary); }
