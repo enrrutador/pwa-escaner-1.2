@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { dbEscaneos } from '@/lib/db-escaneos';
 import { dbProductos } from '@/lib/db-productos';
 
-export default function Scanner() {
+function ScannerInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const autoCamara = searchParams.get('auto') === '1';
   const { mostrarToast } = useUIStore();
   const { usuario } = useAuthStore();
   const [activo, setActivo] = useState(false);
@@ -30,6 +32,12 @@ export default function Scanner() {
   useEffect(() => {
     cargarHistorial();
   }, [cargarHistorial]);
+
+  useEffect(() => {
+    if (autoCamara && !activo) {
+      iniciarCamara();
+    }
+  }, [autoCamara]);
 
   const iniciarCamara = async () => {
     try {
@@ -258,5 +266,13 @@ export default function Scanner() {
         </>
       )}
     </div>
+  );
+}
+
+export default function Scanner() {
+  return (
+    <Suspense fallback={<div className="screen active"><div className="empty"><p>Cargando...</p></div></div>}>
+      <ScannerInner />
+    </Suspense>
   );
 }

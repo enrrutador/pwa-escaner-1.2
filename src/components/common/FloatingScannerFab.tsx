@@ -35,7 +35,7 @@ export function FloatingScannerFab() {
 
   return (
     <Link
-      href="/scanner"
+      href="/scanner?auto=1"
       className="fab"
       style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
       onPointerDown={onPointerDown}

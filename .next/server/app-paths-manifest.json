@@ -1,11 +1,11 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
+  "/inventario/page": "app/inventario/page.js",
   "/inventario/nuevo/page": "app/inventario/nuevo/page.js",
   "/ajustes/page": "app/ajustes/page.js",
-  "/inventario/page": "app/inventario/page.js",
+  "/scanner/page": "app/scanner/page.js",
+  "/page": "app/page.js",
   "/producto/[id]/page": "app/producto/[id]/page.js",
   "/historial/page": "app/historial/page.js",
-  "/page": "app/page.js",
-  "/scanner/page": "app/scanner/page.js",
   "/api/buscar/route": "app/api/buscar/route.js"
 }
