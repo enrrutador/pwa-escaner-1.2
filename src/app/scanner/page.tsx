@@ -207,10 +207,17 @@ function ScannerInner() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 12, background: 'var(--surface-high)', borderRadius: 'var(--r-xl)', border: '1px solid var(--line-soft)' }}>
-                    <div className="thumb">
+                    {resultado.producto.imagen && (
+                      <img 
+                        src={resultado.producto.imagen} 
+                        alt={resultado.producto.nombre}
+                        style={{ width: 56, height: 56, borderRadius: 'var(--r-lg)', objectFit: 'cover', background: 'var(--surface)', border: '1px solid var(--line-soft)' }}
+                      />
+                    )}
+                    <div className="thumb" style={{ display: resultado.producto.imagen ? 'none' : 'grid' }}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="name">{resultado.producto.nombre}</div>
                       <div className="time">{resultado.fuente}</div>
                     </div>
