@@ -41,6 +41,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
   ({ onScan, activo, cooldownMs = 1500 }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const readerRef = useRef<any>(null);
+    const controlsRef = useRef<{ stop: () => void } | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
     const mountedRef = useRef(true);
@@ -51,16 +52,28 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const [torchAvailable, setTorchAvailable] = useState(false);
 
     const detenerTodo = useCallback(() => {
+      // 1. Detener el loop de decodificación (CRÍTICO: mata requestAnimationFrame)
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+
+      // 2. Reset del reader (compat)
       if (readerRef.current) {
-        try { readerRef.current.reset(); } catch {}
+        try { readerRef.current.reset?.(); } catch {}
         readerRef.current = null;
       }
+
+      // 3. Matar stream
       matarStream(streamRef.current);
       streamRef.current = null;
+
+      // 4. Limpiar video
       if (videoRef.current) {
         videoRef.current.srcObject = null;
         videoRef.current.load();
       }
+
       setTorchOn(false);
       setTorchAvailable(false);
       if (mountedRef.current) {
@@ -81,8 +94,10 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
       try {
         // Dynamic import: ZXing ~300kb solo se descarga al escanear
-        const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } =
-          await import('@zxing/library');
+        // Reader de @zxing/browser (devuelve controls con .stop())
+        // Tipos de @zxing/library
+        const { BrowserMultiFormatReader } = await import('@zxing/browser');
+        const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
 
         const hints = new Map();
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -139,26 +154,32 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         const reader = new BrowserMultiFormatReader(hints);
         readerRef.current = reader;
 
-        reader.decodeFromVideoElementContinuously(videoRef.current!, (result: any, _: any) => {
-          if (!result || !mountedRef.current) return;
+        // @zxing/browser decodeFromVideoElement devuelve controles con .stop()
+        const controls = await reader.decodeFromVideoElement(
+          videoRef.current!,
+          (result: any, _err: any, _ctrl: any) => {
+            if (!result || !mountedRef.current) return;
 
-          const codigo = result.getText().trim();
-          const formato = BarcodeFormat[result.getBarcodeFormat()] ?? 'UNKNOWN';
-          const ahora = Date.now();
+            const codigo = result.getText().trim();
+            const formato = BarcodeFormat[result.getBarcodeFormat()] ?? 'UNKNOWN';
+            const ahora = Date.now();
 
-          if (
-            codigo === lastScanRef.current.code &&
-            ahora - lastScanRef.current.time < cooldownMs
-          ) return;
+            if (
+              codigo === lastScanRef.current.code &&
+              ahora - lastScanRef.current.time < cooldownMs
+            ) return;
 
-          if (codigo.length < 4) return;
+            if (codigo.length < 4) return;
 
-          lastScanRef.current = { code: codigo, time: ahora };
+            lastScanRef.current = { code: codigo, time: ahora };
+            if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
 
-          if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+            onScan(codigo, formato);
+          }
+        );
 
-          onScan(codigo, formato);
-        });
+        // Guardar controles para poder frenar el loop en detenerTodo()
+        controlsRef.current = controls;
       } catch (err: any) {
         if (!mountedRef.current) return;
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
