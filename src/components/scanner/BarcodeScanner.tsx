@@ -80,7 +80,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
 
         scanningRef.current = false;
 
-        // Use ZXing to directly handle camera + decoding (no dual stream)
+        // Use ZXing to directly handle camera + decoding
         controlsRef.current = await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
@@ -95,19 +95,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
           }
         );
 
-        // Camera is streaming - wait for video to be playing
-        await new Promise<void>((resolve) => {
-          const video = videoRef.current;
-          if (!video) return resolve();
-          if (video.readyState >= 2) {
-            resolve();
-          } else {
-            video.onloadeddata = () => resolve();
-            video.onerror = () => resolve();
-            video.play().catch(() => resolve());
-          }
-        });
-
+        // Camera stream started - mark as ready
         if (isMounted) {
           setCameraReady(true);
           onCameraReady?.();
@@ -116,6 +104,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
         console.log('[Scanner] Cámara iniciada y escaneando');
       } catch (err) {
         console.error('[Scanner] Error iniciando cámara:', err);
+        if (isMounted) setCameraReady(false);
       }
     }
 
@@ -146,7 +135,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
   return (
     <video
       ref={videoRef}
-      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: cameraReady ? 1 : 0 }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: cameraReady ? 1 : 0, transition: 'opacity 0.2s ease' }}
       playsInline
       muted
     />
