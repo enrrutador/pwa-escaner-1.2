@@ -1,16 +1,15 @@
 // src/app/api/buscar/route.ts
 // GET /api/buscar?q=<codigo|texto>
-// 4 proveedores en paralelo (Promise.allSettled, timeout 5s), dedup, max 8.
+// 4 proveedores VTEX + MercadoLibre, dedup, max 8.
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { ResultadoBusqueda } from '@/types';
 
-// Usar Node.js runtime para fetch externo sin problemas de CORS/edge
 export const runtime = 'nodejs';
 
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 6000;
 
-const VTEX_BASES: Record<'jumbo' | 'carrefour' | 'farmacity', string> = {
+const VTEX_BASES: Record<string, string> = {
   jumbo: 'https://www.jumbo.com.ar',
   carrefour: 'https://www.carrefour.com.ar',
   farmacity: 'https://www.farmacity.com',
@@ -18,10 +17,6 @@ const VTEX_BASES: Record<'jumbo' | 'carrefour' | 'farmacity', string> = {
 
 const COTO_AUTOCOMPLETE = 'https://ac.cnstrc.com/autocomplete';
 const COTO_KEY = process.env.CONSTRUCTOR_KEY ?? '';
-
-function normalizar(nombre: string): string {
-  return nombre.trim().toLowerCase().slice(0, 30);
-}
 
 async function fetchConTimeout(url: string, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
@@ -33,53 +28,101 @@ async function fetchConTimeout(url: string, init?: RequestInit): Promise<Respons
   }
 }
 
+function normalizar(nombre: string): string {
+  return nombre.trim().toLowerCase().slice(0, 30);
+}
+
 async function buscarVtex(
-  fuente: 'jumbo' | 'carrefour' | 'farmacity',
+  fuente: string,
+  base: string,
   q: string,
   esEan: boolean,
 ): Promise<ResultadoBusqueda[]> {
-  const base = VTEX_BASES[fuente];
-  const url = esEan
-    ? `${base}/api/catalog_system/pub/products/search/${encodeURIComponent(q)}`
-    : `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
+  try {
+    // For EAN: try path-based first (works on all VTEX stores)
+    // For text: use ?ft= query
+    const url = esEan
+      ? `${base}/api/catalog_system/pub/products/search/${encodeURIComponent(q)}`
+      : `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
 
-  console.log(`[buscar] ${fuente} -> ${url}`);
-  const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
-  console.log(`[buscar] ${fuente} status: ${res.status}`);
-  if (!res.ok) return [];
-  const data = (await res.json()) as any[];
-  console.log(`[buscar] ${fuente} items: ${data?.length ?? 0}`);
+    console.log(`[buscar] ${fuente} -> ${url}`);
+    const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
+    console.log(`[buscar] ${fuente} status: ${res.status}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as any[];
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log(`[buscar] ${fuente} 0 items`);
+      return [];
+    }
+    console.log(`[buscar] ${fuente} ${data.length} items`);
 
-  return (data ?? []).map((p) => {
-    const item = p.items?.[0];
-    const seller = item?.sellers?.[0]?.commertialOffer;
-    return {
-      nombre: p.productName ?? p.productTitle ?? 'Sin nombre',
-      codigoBarras: item?.ean ?? undefined,
-      imagen: item?.images?.[0]?.imageUrl ?? undefined,
-      descripcion: p.description ?? undefined,
-      precio: seller?.Price ?? undefined,
-      fuente,
-    } satisfies ResultadoBusqueda;
-  });
+    return data.map((p) => {
+      const item = p.items?.[0];
+      const seller = item?.sellers?.[0]?.commertialOffer;
+      return {
+        nombre: p.productName ?? p.productTitle ?? 'Sin nombre',
+        codigoBarras: item?.ean ?? undefined,
+        imagen: item?.images?.[0]?.imageUrl ?? undefined,
+        descripcion: p.description ?? undefined,
+        precio: seller?.Price ?? undefined,
+        marca: p.brand ?? undefined,
+        fuente,
+      } satisfies ResultadoBusqueda;
+    });
+  } catch (e) {
+    console.error(`[buscar] ${fuente} error:`, e);
+    return [];
+  }
 }
 
 async function buscarCoto(q: string): Promise<ResultadoBusqueda[]> {
   if (!COTO_KEY) return [];
-  const url = `${COTO_AUTOCOMPLETE}/${encodeURIComponent(q)}?key=${COTO_KEY}&num_results=1`;
-  console.log(`[buscar] coto -> ${url}`);
-  const res = await fetchConTimeout(url);
-  console.log(`[buscar] coto status: ${res.status}`);
-  if (!res.ok) return [];
-  const data = (await res.json()) as any;
-  const items = data?.sections?.Products ?? [];
-  return items.map((it: any) => ({
-    nombre: it.value ?? 'Sin nombre',
-    codigoBarras: it.data?.ean ?? undefined,
-    imagen: it.data?.image_url ?? undefined,
-    precio: it.data?.price ?? undefined,
-    fuente: 'coto' as const,
-  }));
+  try {
+    const url = `${COTO_AUTOCOMPLETE}/${encodeURIComponent(q)}?key=${COTO_KEY}&num_results=1`;
+    console.log(`[buscar] coto -> ${url}`);
+    const res = await fetchConTimeout(url);
+    console.log(`[buscar] coto status: ${res.status}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as any;
+    const items = data?.sections?.Products ?? [];
+    return items.map((it: any) => ({
+      nombre: it.value ?? 'Sin nombre',
+      codigoBarras: it.data?.ean ?? undefined,
+      imagen: it.data?.image_url ?? undefined,
+      precio: it.data?.price ?? undefined,
+      marca: it.data?.brand ?? undefined,
+      fuente: 'coto',
+    }));
+  } catch (e) {
+    console.error('[buscar] coto error:', e);
+    return [];
+  }
+}
+
+async function buscarMercadoLibre(q: string): Promise<ResultadoBusqueda[]> {
+  try {
+    const url = `https://api.mercadolibre.com/sites/MLA/search?q=${encodeURIComponent(q)}&limit=3`;
+    console.log(`[buscar] mercadolibre -> ${url}`);
+    const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
+    console.log(`[buscar] mercadolibre status: ${res.status}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as any;
+    const results = data?.results ?? [];
+    console.log(`[buscar] mercadolibre ${results.length} items`);
+
+    return results.map((r: any) => ({
+      nombre: r.title ?? 'Sin nombre',
+      codigoBarras: undefined,
+      imagen: r.thumbnail?.replace('http://', 'https://')?.replace('-I.jpg', '-O.jpg') ?? undefined,
+      descripcion: undefined,
+      precio: r.price ?? undefined,
+      marca: r.attributes?.find((a: any) => a.id === 'BRAND')?.value_name ?? undefined,
+      fuente: 'mercadolibre',
+    }));
+  } catch (e) {
+    console.error('[buscar] mercadolibre error:', e);
+    return [];
+  }
 }
 
 function deduplicar(resultados: ResultadoBusqueda[]): ResultadoBusqueda[] {
@@ -104,10 +147,11 @@ export async function GET(req: NextRequest) {
   console.log(`[buscar] query: "${q}" esEan: ${esEan}`);
 
   const settled = await Promise.allSettled([
-    buscarVtex('jumbo', q, esEan),
-    buscarVtex('carrefour', q, esEan),
-    buscarVtex('farmacity', q, esEan),
+    buscarVtex('jumbo', VTEX_BASES.jumbo, q, esEan),
+    buscarVtex('carrefour', VTEX_BASES.carrefour, q, esEan),
+    buscarVtex('farmacity', VTEX_BASES.farmacity, q, esEan),
     buscarCoto(q),
+    buscarMercadoLibre(q),
   ]);
 
   const todos: ResultadoBusqueda[] = [];

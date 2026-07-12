@@ -90,7 +90,11 @@ export default function Inventario() {
             return (
               <Link key={p.id} href={`/producto/${p.id}`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
                 <div className="pimg">
-                  <ProductIcon />
+                  {p.imagen ? (
+                    <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-lg)' }} />
+                  ) : (
+                    <ProductIcon />
+                  )}
                 </div>
                 <div className="pbody">
                   <div className="prow">

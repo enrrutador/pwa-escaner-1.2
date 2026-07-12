@@ -26,6 +26,7 @@ function NuevoProductoInner() {
   const initImg = searchParams.get('img') || '';
   const initDesc = searchParams.get('des') || '';
   const initPre = searchParams.get('pre') || '';
+  const initMarca = searchParams.get('mar') || '';
 
   if (!tienePermiso('productos:crear')) {
     return (
@@ -42,7 +43,7 @@ function NuevoProductoInner() {
     codigoBarras: initCodigo,
     nombre: initNombre,
     categoria: 'General',
-    marca: '',
+    marca: initMarca,
     precioCompra: 0,
     precioVenta: initPre ? Number(initPre) : 0,
     stockActual: 0,

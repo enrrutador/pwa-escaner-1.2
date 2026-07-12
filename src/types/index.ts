@@ -106,6 +106,7 @@ export interface Escaneo {
   resultado: ResultadoEscaneo;
   productoId?: string | null;
   nombreProducto?: string | null;
+  imagen?: string | null;
   createdAt: number;
 }
 
@@ -123,7 +124,8 @@ export interface ResultadoBusqueda {
   imagen?: string;
   descripcion?: string;
   precio?: number;
-  fuente: 'jumbo' | 'carrefour' | 'farmacity' | 'coto';
+  marca?: string;
+  fuente: string;
 }
 
 /* ============ PERMISOS ============ */

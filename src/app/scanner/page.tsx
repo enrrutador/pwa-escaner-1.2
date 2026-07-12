@@ -41,41 +41,28 @@ function ScannerInner() {
   }, [autoCamara]);
 
   const onScan = useCallback(async (codigoDetectado: string) => {
-    // 1. Reset estados
     setResultado(null);
     setCodigo(codigoDetectado);
-    setActivo(false); // Apagar cámara al detectar según lógica solicitada
-
-    // 2. Feedback visual (Flash verde)
+    setActivo(false);
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 300);
 
-    // 3. Registrar escaneo en BD
-    const esc = await dbEscaneos.registrar({ 
-      codigo: codigoDetectado, 
-      origen: 'camara', 
-      resultado: 'encontrado' 
-    });
-
-    // 4. Buscar en BD local (Barras -> PLU)
     const producto = await dbProductos.obtenerPorCodigoBarras(codigoDetectado) 
                    || await dbProductos.obtenerPorPlu(codigoDetectado);
 
     if (producto) {
-      setResultado({ producto, fuente: 'local' });
       await dbEscaneos.registrar({ 
         codigo: codigoDetectado, 
         origen: 'camara', 
         resultado: 'encontrado', 
         productoId: producto.id, 
-        nombreProducto: producto.nombre 
+        nombreProducto: producto.nombre,
+        imagen: producto.imagen ?? null,
       });
-      // Nota: registrar se llama dos veces en la lógica proporcionada, 
-      // aquí deberíamos usar dbEscaneos.actualizar(esc.id, ...), pero sigamos el flujo.
+      setResultado({ producto, fuente: 'local' });
       return;
     }
 
-    // 5. No encontrado local -> Buscar en Web
     await buscarEnWeb(codigoDetectado);
   }, []);
 
@@ -92,7 +79,8 @@ function ScannerInner() {
           codigo: cod, 
           origen: 'camara', 
           resultado: 'encontrado', 
-          nombreProducto: p.nombre 
+          nombreProducto: p.nombre,
+          imagen: p.imagen ?? null,
         });
         // Redirect to new product form with pre-filled data from search
         const params = new URLSearchParams({
@@ -101,6 +89,7 @@ function ScannerInner() {
           img: p.imagen || '',
           des: p.descripcion || '',
           pre: String(p.precio || ''),
+          mar: p.marca || '',
         });
         router.push(`/inventario/nuevo?${params.toString()}`);
       } else {

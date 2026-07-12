@@ -34,12 +34,14 @@ export const dbEscaneos = {
     resultado,
     productoId = null,
     nombreProducto = null,
+    imagen = null,
   }: {
     codigo: string;
     origen: OrigenEscaneo;
     resultado: ResultadoEscaneo;
     productoId?: string | null;
     nombreProducto?: string | null;
+    imagen?: string | null;
   }): Promise<Escaneo> {
     const escaneo: Escaneo = {
       id: uid(),
@@ -48,6 +50,7 @@ export const dbEscaneos = {
       resultado,
       productoId,
       nombreProducto,
+      imagen,
       createdAt: now(),
     };
     await db.escaneos.add(escaneo);
