@@ -40,7 +40,7 @@ async function buscarVtex(
 ): Promise<ResultadoBusqueda[]> {
   const base = VTEX_BASES[fuente];
   const url = esEan
-    ? `${base}/api/catalog_system/pub/products/search/?fq=EAN:${encodeURIComponent(q)}`
+    ? `${base}/api/catalog_system/pub/products/search/${encodeURIComponent(q)}`
     : `${base}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(q)}`;
 
   console.log(`[buscar] ${fuente} -> ${url}`);
