@@ -39,7 +39,7 @@ async function buscarVtexIntelligent(
   q: string,
 ): Promise<ResultadoBusqueda[]> {
   try {
-    const url = `${base}/api/io/_v/api/intelligent-search/product_search/${encodeURIComponent(q)}?locale=es-AR`;
+    const url = `${base}/api/io/_v/api/intelligent-search/product_search/?locale=es-AR&query=${encodeURIComponent(q)}`;
     console.log(`[buscar] ${fuente} intelligent -> ${url}`);
     const res = await fetchConTimeout(url, { headers: { Accept: 'application/json' } });
     console.log(`[buscar] ${fuente} status: ${res.status}`);
