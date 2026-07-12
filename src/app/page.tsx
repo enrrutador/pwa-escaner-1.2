@@ -24,7 +24,27 @@ export default function Dashboard() {
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
   }, [inicializado]);
 
-  if (!inicializado || !usuario) return null;
+  // Show loading skeleton while initializing
+  if (!inicializado) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 w-48 bg-navy-800 rounded" />
+          <div className="h-4 w-64 bg-navy-800 rounded" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="p-4 rounded-xl border border-navy-700 bg-navy-900/50 animate-pulse">
+              <div className="h-4 w-24 bg-navy-800 rounded mb-2" />
+              <div className="h-12 w-16 bg-navy-800 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!usuario) return null;
 
   const stats = [
     { label: 'Productos', valor: productos.length, icon: '📦', color: 'border-l-4 border-cyan-500' },
