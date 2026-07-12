@@ -20,6 +20,7 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
   const scanningRef = useRef(false);
   const torchRef = useRef(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleScan = useCallback((texto: string) => {
     if (!scanningRef.current) {
@@ -57,13 +58,21 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
     async function start() {
       if (!activo || !videoRef.current) return;
 
+      setError(null);
+      setCameraReady(false);
+
       try {
+        console.log('[Scanner] === INICIANDO CÁMARA ===');
+        
+        // Stop previous if any
         if (controlsRef.current) {
+          console.log('[Scanner] Deteniendo cámara anterior');
           controlsRef.current.stop();
           controlsRef.current = null;
         }
 
         if (!readerRef.current) {
+          console.log('[Scanner] Creando BrowserMultiFormatReader');
           readerRef.current = new BrowserMultiFormatReader();
           const hints = new Map();
           hints.set('possible_formats', [
@@ -80,45 +89,84 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
 
         scanningRef.current = false;
 
+        console.log('[Scanner] Llamando decodeFromVideoDevice...');
+        
         // Start decoding - this will request camera permission and start stream
         controlsRef.current = await readerRef.current.decodeFromVideoDevice(
-          undefined,
+          undefined, // deviceId - undefined = default
           videoRef.current,
           (result, err) => {
             if (!isMounted) return;
             if (result) {
+              console.log('[Scanner] Resultado:', result.getText());
               handleScan(result.getText());
             }
-            if (err && err.name !== 'NotFoundException') {
-              console.debug('[Scanner] ZXing:', err.name);
+            if (err && err.name !== 'NotFoundException' && err.name !== 'ChecksumException' && err.name !== 'FormatException') {
+              console.debug('[Scanner] ZXing error:', err.name, err.message);
             }
           }
         );
 
-        // Wait for video to actually play
-        const video = videoRef.current;
-        if (video) {
-          try {
-            await video.play();
-          } catch (e) {
-            console.warn('[Scanner] play() failed:', e);
-          }
-        }
+        console.log('[Scanner] decodeFromVideoDevice completado, controlsRef:', !!controlsRef.current);
 
-        // Video is streaming - mark ready
-        if (isMounted) {
-          setCameraReady(true);
-          onCameraReady?.();
+        // Check if video has stream
+        const video = videoRef.current;
+        if (video && video.srcObject) {
+          console.log('[Scanner] Video stream activo:', video.srcObject);
+          
+          // Wait for video to be ready
+          if (video.readyState >= 2) {
+            console.log('[Scanner] Video ya listo (readyState >= 2)');
+            if (isMounted) {
+              setCameraReady(true);
+              onCameraReady?.();
+            }
+          } else {
+            console.log('[Scanner] Esperando video.onloadeddata...');
+            await new Promise<void>((resolve) => {
+              if (!video) return resolve();
+              const timeout = setTimeout(() => {
+                console.warn('[Scanner] Timeout esperando video');
+                resolve();
+              }, 3000);
+              
+              video.onloadeddata = () => {
+                clearTimeout(timeout);
+                console.log('[Scanner] Video loadeddata');
+                resolve();
+              };
+              video.onerror = (e) => {
+                clearTimeout(timeout);
+                console.error('[Scanner] Video error:', e);
+                resolve();
+              };
+              video.play().catch((e) => {
+                console.warn('[Scanner] play() falló:', e);
+              });
+            });
+            
+            if (isMounted) {
+              setCameraReady(true);
+              onCameraReady?.();
+            }
+          }
+        } else {
+          console.error('[Scanner] ERROR: video.srcObject es null - no hay stream');
+          setError('No se pudo obtener stream de cámara');
         }
 
         console.log('[Scanner] Cámara iniciada y escaneando');
-      } catch (err) {
-        console.error('[Scanner] Error iniciando cámara:', err);
-        if (isMounted) setCameraReady(false);
+      } catch (err: any) {
+        console.error('[Scanner] ERROR iniciando cámara:', err);
+        if (isMounted) {
+          setError(err.message || 'Error al iniciar cámara');
+          setCameraReady(false);
+        }
       }
     }
 
     function stop() {
+      console.log('[Scanner] === DETENIENDO CÁMARA ===');
       if (controlsRef.current) {
         controlsRef.current.stop();
         controlsRef.current = null;
@@ -141,6 +189,36 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       stop();
     };
   }, [activo, handleScan, onCameraReady]);
+
+  if (error) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100%', 
+        gap: 16,
+        color: 'var(--danger)',
+        padding: 20,
+        textAlign: 'center'
+      }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <p style={{ fontWeight: 600 }}>Error de cámara</p>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{error}</p>
+        <button 
+          onClick={() => { setError(null); window.location.reload(); }}
+          style={{ marginTop: 8, padding: '10px 20px', background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--r-lg)', fontWeight: 600 }}
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   return (
     <video
