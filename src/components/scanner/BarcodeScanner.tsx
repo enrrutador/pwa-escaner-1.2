@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
-import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
+import { BrowserMultiFormatReader, IScannerControls, BarcodeFormat } from '@zxing/browser';
 
 interface BarcodeScannerProps {
   onScan: (codigo: string) => void;
@@ -17,6 +17,17 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
   const [torchState, setTorchState] = useState(false);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
+  const scanningRef = useRef(false);
+
+  // Guard para evitar múltiples lecturas del mismo código
+  const handleScan = useCallback((texto: string) => {
+    if (!scanningRef.current) {
+      scanningRef.current = true;
+      onScan(texto);
+      // Resetear después de un tiempo para permitir nuevo escaneo si la cámara sigue activa
+      setTimeout(() => { scanningRef.current = false; }, 2000);
+    }
+  }, [onScan]);
 
   useImperativeHandle(ref, () => ({
     alternarTorch: async () => {
@@ -58,14 +69,28 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
 
         if (!readerRef.current) {
           readerRef.current = new BrowserMultiFormatReader();
+          // Configurar solo formatos de uso común en retail para mayor velocidad
+          const hints = new Map();
+          hints.set('possible_formats', [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39,
+            BarcodeFormat.ITF,
+          ]);
+          readerRef.current.setHints(hints);
         }
+
+        scanningRef.current = false;
 
         controlsRef.current = await readerRef.current.decodeFromVideoDevice(
           undefined,
           videoRef.current,
           (result, err, controls) => {
             if (result) {
-              onScan(result.getText());
+              handleScan(result.getText());
             }
           }
         );
@@ -90,13 +115,14 @@ export const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerPro
       start();
     } else {
       stop();
+      scanningRef.current = false;
     }
 
     return () => {
       isMounted = false;
       stop();
     };
-  }, [activo, onScan]);
+  }, [activo, handleScan]);
 
   return (
     <video
