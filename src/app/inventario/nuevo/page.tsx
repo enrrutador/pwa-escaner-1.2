@@ -1,16 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { dbProductos } from '@/lib/db-productos';
 
-export default function NuevoProducto() {
+function stripHtml(html: string): string {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
+
+function NuevoProductoInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { tienePermiso } = useAuthStore();
   const { mostrarToast } = useUIStore();
   const [cargando, setCargando] = useState(false);
+
+  // Pre-fill from URL params (scraped data)
+  const initCodigo = searchParams.get('cod') || '';
+  const initNombre = searchParams.get('nom') || '';
+  const initImg = searchParams.get('img') || '';
+  const initDesc = searchParams.get('des') || '';
+  const initPre = searchParams.get('pre') || '';
 
   if (!tienePermiso('productos:crear')) {
     return (
@@ -24,15 +39,17 @@ export default function NuevoProducto() {
 
   const [form, setForm] = useState({
     plu: '',
-    codigoBarras: '',
-    nombre: '',
+    codigoBarras: initCodigo,
+    nombre: initNombre,
     categoria: 'General',
     marca: '',
     precioCompra: 0,
-    precioVenta: 0,
+    precioVenta: initPre ? Number(initPre) : 0,
     stockActual: 0,
     stockMinimo: 5,
     ubicacionId: null as string | null,
+    imagen: initImg,
+    descripcion: initDesc ? stripHtml(initDesc) : '',
   });
 
   const crear = async (e: React.FormEvent) => {
@@ -43,7 +60,20 @@ export default function NuevoProducto() {
     }
     setCargando(true);
     try {
-      await dbProductos.crear(form);
+      await dbProductos.crear({
+        plu: form.plu,
+        codigoBarras: form.codigoBarras,
+        nombre: form.nombre,
+        categoria: form.categoria,
+        marca: form.marca,
+        precioCompra: form.precioCompra,
+        precioVenta: form.precioVenta,
+        stockActual: form.stockActual,
+        stockMinimo: form.stockMinimo,
+        ubicacionId: form.ubicacionId,
+        imagen: form.imagen || undefined,
+        descripcion: form.descripcion || undefined,
+      });
       mostrarToast('exito', 'Producto creado');
       router.push('/inventario');
     } catch (e: any) {
@@ -59,6 +89,23 @@ export default function NuevoProducto() {
         <p className="eyebrow">Inventario</p>
         <h1 className="h-page">Nuevo producto</h1>
       </div>
+
+      {form.imagen && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <img 
+            src={form.imagen} 
+            alt={form.nombre || 'Producto'}
+            style={{ 
+              width: 120, 
+              height: 120, 
+              borderRadius: 'var(--r-xl)', 
+              objectFit: 'cover', 
+              background: 'var(--surface)',
+              border: '2px solid var(--line-soft)'
+            }}
+          />
+        </div>
+      )}
 
       <form onSubmit={crear} className="form-panel">
         <div className="fp-head">
@@ -77,6 +124,16 @@ export default function NuevoProducto() {
           <div className="field full">
             <label>Nombre <span className="req">*</span></label>
             <input type="text" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required placeholder="Nombre del producto" />
+          </div>
+          <div className="field full">
+            <label>Descripción</label>
+            <textarea 
+              value={form.descripcion} 
+              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+              placeholder="Descripción del producto"
+              rows={3}
+              style={{ resize: 'vertical', minHeight: 60 }}
+            />
           </div>
           <div className="field">
             <label>Marca</label>
@@ -114,5 +171,13 @@ export default function NuevoProducto() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NuevoProducto() {
+  return (
+    <Suspense fallback={<div className="screen active"><div className="empty"><p>Cargando...</p></div></div>}>
+      <NuevoProductoInner />
+    </Suspense>
   );
 }

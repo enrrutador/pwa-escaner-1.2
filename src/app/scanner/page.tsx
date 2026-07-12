@@ -88,13 +88,21 @@ function ScannerInner() {
 
       if (externos.length > 0) {
         const p = externos[0];
-        setResultado({ producto: { ...p, externo: true }, fuente: p.fuente });
         await dbEscaneos.registrar({ 
           codigo: cod, 
           origen: 'camara', 
           resultado: 'encontrado', 
           nombreProducto: p.nombre 
         });
+        // Redirect to new product form with pre-filled data from search
+        const params = new URLSearchParams({
+          cod: cod,
+          nom: p.nombre || '',
+          img: p.imagen || '',
+          des: p.descripcion || '',
+          pre: String(p.precio || ''),
+        });
+        router.push(`/inventario/nuevo?${params.toString()}`);
       } else {
         setResultado({ producto: { codigo: cod, nombre: 'No encontrado' }, fuente: 'ninguna' });
         await dbEscaneos.registrar({ 
@@ -104,7 +112,7 @@ function ScannerInner() {
         });
       }
     } catch (e: any) {
-      mostrarToast('error', 'Error en búsqueda web: ' + e.message);
+      mostrarToast('error', 'Error en búsqueda: ' + e.message);
     } finally {
       setCargando(false);
       await cargarHistorial();
@@ -219,9 +227,8 @@ function ScannerInner() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="name">{resultado.producto.nombre}</div>
-                      <div className="time">{resultado.fuente}</div>
+                      <div className="time">#{codigo}</div>
                     </div>
-                    <span className="sku">#{codigo}</span>
                   </div>
 
                   {resultado.producto.id && (
