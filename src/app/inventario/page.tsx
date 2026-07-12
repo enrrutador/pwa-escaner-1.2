@@ -4,114 +4,135 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
 import { useProductos } from '@/hooks/useProductos';
-import { useAuthStore } from '@/store/authStore';
-import { dbProductos } from '@/lib/db-productos';
+
+const CATEGORIAS = ['Todas'];
+
+function ProductIcon() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+      <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+    </svg>
+  );
+}
 
 export default function Inventario() {
-  const { tienePermiso } = useAuthStore();
-  const puedeCrear = tienePermiso('productos:crear');
   const [busqueda, setBusqueda] = useState('');
-  const { productos, total, hasMore, cargando, error, cargarMas, recargar } = useProductos({
+  const [categoriaActiva, setCategoriaActiva] = useState('Todas');
+  const { productos, total, hasMore, cargando, error, cargarMas } = useProductos({
     busqueda,
-    limite: 20,
+    limite: 50,
   });
 
+  const categoriasUnicas = ['Todas', ...new Set(productos.map((p) => p.categoria).filter(Boolean))];
+  const categorias = categoriasUnicas.length > 1 ? categoriasUnicas : CATEGORIAS;
+
+  const productosFiltrados = categoriaActiva === 'Todas'
+    ? productos
+    : productos.filter((p) => p.categoria === categoriaActiva);
+
+  function getStockStatus(p: { stockActual: number; stockMinimo: number }) {
+    if (p.stockActual === 0) return { cls: 'out', label: 'Sin stock' };
+    if (p.stockActual <= p.stockMinimo) return { cls: 'low', label: 'Stock bajo' };
+    return { cls: 'ok', label: `${p.stockActual} ok` };
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Inventario</h1>
-          <p className="text-zinc-400 text-sm">{total} productos</p>
-        </div>
-        {puedeCrear && (
-          <Link
-            href="/inventario/nuevo"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500 text-navy-950 font-semibold rounded-lg hover:bg-cyan-400 transition-colors"
-          >
-            + Nuevo producto
-          </Link>
-        )}
+    <div className="screen active">
+      <div>
+        <p className="eyebrow">Inventario</p>
+        <h1 className="h-page">Productos</h1>
       </div>
 
-      <div className="relative">
+      <div className="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
         <input
-          type="search"
-          placeholder="Buscar por nombre, PLU o código de barras..."
+          type="text"
+          placeholder="Buscar SKU, nombre, código…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent"
         />
       </div>
 
+      <div className="chips no-sb">
+        {categorias.map((c) => (
+          <button
+            key={c}
+            className={`chip${categoriaActiva === c ? ' active' : ''}`}
+            onClick={() => setCategoriaActiva(c)}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
+      <div className="count-line">
+        {productosFiltrados.length} productos
+      </div>
+
       {error && (
-        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400">
+        <div style={{ padding: 16, background: 'oklch(72% 0.14 25 / .16)', border: '1px solid var(--danger)', borderRadius: 'var(--r-xl)', color: 'var(--danger)' }}>
           Error: {error.message}
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-zinc-500 border-b border-navy-700">
-              <th className="pb-2 pr-4">PLU</th>
-              <th className="pb-2 pr-4">Código barras</th>
-              <th className="pb-2 pr-4">Producto</th>
-              <th className="pb-2 pr-4">Categoría</th>
-              <th className="pb-2 pr-4">Stock</th>
-              <th className="pb-2 pr-4">Precio</th>
-              <th className="pb-2 pr-4">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {productos.length === 0 && !cargando ? (
-              <tr>
-                <td colSpan={7} className="py-8 text-center text-zinc-500">
-                  No hay productos. {puedeCrear ? 'Crea uno nuevo.' : 'Contacta al admin.'}
-                </td>
-              </tr>
-            ) : (
-              productos.map((p) => (
-                <tr key={p.id} className="border-b border-navy-800 last:border-0 hover:bg-navy-800/50">
-                  <td className="py-3 pr-4 font-mono text-cyan-400">{p.plu}</td>
-                  <td className="py-3 pr-4 font-mono text-xs text-zinc-400">{p.codigoBarras || '-'}</td>
-                  <td className="py-3 pr-4">
-                    <Link href={`/producto/${p.id}`} className="hover:text-cyan-400 transition-colors font-medium">
-                      {p.nombre}
-                    </Link>
-                    {p.marca && <span className="text-zinc-500 text-xs ml-1">({p.marca})</span>}
-                  </td>
-                  <td className="py-3 pr-4 text-zinc-400">{p.categoria}</td>
-                  <td className="py-3 pr-4">
-                    <span className={p.stockActual <= p.stockMinimo ? 'text-orange-400 font-semibold' : ''}>
-                      {p.stockActual}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {productosFiltrados.length === 0 && !cargando ? (
+          <div className="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="m8 8 6 6"/></svg>
+            <p>Sin resultados</p>
+          </div>
+        ) : (
+          productosFiltrados.map((p) => {
+            const st = getStockStatus(p);
+            return (
+              <Link key={p.id} href={`/producto/${p.id}`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
+                <div className="pimg">
+                  <ProductIcon />
+                </div>
+                <div className="pbody">
+                  <div className="prow">
+                    <div className="pname">{p.nombre}</div>
+                    <span className={`pill ${st.cls}`}>
+                      {st.cls === 'ok' ? `${p.stockActual} und` : st.label}
                     </span>
-                    <span className="text-zinc-500 text-xs ml-1">/ {p.stockMinimo}</span>
-                  </td>
-                  <td className="py-3 pr-4">{formatMoney(p.precioVenta)}</td>
-                  <td className="py-3 pr-4">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${
-                      p.activo ? 'bg-green-500/20 text-green-400' : 'bg-zinc-500/20 text-zinc-400'
-                    }`}>
-                      {p.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  </div>
+                  <div className="pmeta">
+                    PLU: {p.plu || '—'}
+                    <span className="dot" />
+                    {p.codigoBarras || '—'}
+                  </div>
+                  <div className="pstats">
+                    <div>
+                      <div className="k">Cantidad</div>
+                      <div className="v">{p.stockActual} und.</div>
+                    </div>
+                    <div>
+                      <div className="k">Precio</div>
+                      <div className="v">{formatMoney(p.precioVenta)}</div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })
+        )}
       </div>
 
       {hasMore && (
-        <div className="text-center">
-          <button
-            onClick={cargarMas}
-            disabled={cargando}
-            className="px-6 py-3 bg-navy-800 border border-navy-700 rounded-xl text-zinc-300 hover:bg-navy-700 disabled:opacity-50 transition-colors"
-          >
-            {cargando ? 'Cargando...' : 'Cargar más'}
-          </button>
-        </div>
+        <button
+          onClick={cargarMas}
+          disabled={cargando}
+          style={{
+            width: '100%', padding: '12px', background: 'var(--surface)', border: '1px solid var(--line)',
+            borderRadius: 'var(--r-xl)', color: 'var(--text-dim)', fontWeight: 600, cursor: 'pointer',
+            opacity: cargando ? 0.5 : 1,
+          }}
+        >
+          {cargando ? 'Cargando...' : 'Cargar más'}
+        </button>
       )}
     </div>
   );

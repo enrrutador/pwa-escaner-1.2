@@ -1,27 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { notFound } from 'next/navigation';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
 import { dbProductos } from '@/lib/db-productos';
 import { dbMovimientos } from '@/lib/db-movimientos';
 import { useAuthStore } from '@/store/authStore';
-import { useUIStore } from '@/store/uiStore';
 
 export default function ProductoDetalle() {
   const params = useParams();
   const id = params.id as string;
-  const { usuario, tienePermiso } = useAuthStore();
-  const { mostrarToast } = useUIStore();
-  const puedeEditar = tienePermiso('productos:editar');
-  const puedeAjustar = tienePermiso('stock:ajustar');
+  const router = useRouter();
+  const { usuario } = useAuthStore();
   const [producto, setProducto] = useState<any>(null);
   const [movimientos, setMovimientos] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [editando, setEditando] = useState(false);
-  const [formData, setFormData] = useState<any>({});
 
   useEffect(() => {
     const cargar = async () => {
@@ -29,223 +23,107 @@ export default function ProductoDetalle() {
         dbProductos.obtener(id),
         dbMovimientos.listar({ productoId: id, limite: 20 }),
       ]);
-      if (!p) {
-        notFound();
-        return;
-      }
+      if (!p) { router.push('/inventario'); return; }
       setProducto(p);
       setMovimientos(movs.items);
-      setFormData({
-        nombre: p.nombre,
-        categoria: p.categoria,
-        marca: p.marca,
-        precioCompra: p.precioCompra,
-        precioVenta: p.precioVenta,
-        stockMinimo: p.stockMinimo,
-        ubicacionId: p.ubicacionId,
-      });
       setCargando(false);
     };
     cargar();
-  }, [id]);
+  }, [id, router]);
 
-  const guardar = async () => {
-    try {
-      await dbProductos.actualizar(id, { ...formData, updatedAt: Date.now() });
-      const p = await dbProductos.obtener(id);
-      setProducto(p);
-      setEditando(false);
-      mostrarToast('exito', 'Producto actualizado');
-    } catch (e: any) {
-      mostrarToast('error', e.message);
-    }
-  };
-
-  const ajustarStock = async (tipo: 'entrada' | 'salida' | 'ajuste', cantidad: number) => {
+  const ajustarStock = async (tipo: 'entrada' | 'salida', cantidad: number) => {
     if (!usuario) return;
-    try {
-      await dbProductos.ajustarStock(id, cantidad, tipo, 'Ajuste manual', usuario.id);
-      const p = await dbProductos.obtener(id);
-      setProducto(p);
-      mostrarToast('exito', `Stock ${tipo}: ${cantidad}`);
-    } catch (e: any) {
-      mostrarToast('error', e.message);
-    }
+    await dbProductos.ajustarStock(id, cantidad, tipo, 'Ajuste manual', usuario.id);
+    const p = await dbProductos.obtener(id);
+    setProducto(p);
   };
 
-  if (cargando) return <div className="py-12 text-center text-zinc-500">Cargando...</div>;
-  if (!producto) return notFound();
+  if (cargando) {
+    return (
+      <div className="screen active">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ height: 190, background: 'var(--surface)', borderRadius: 'var(--r-2xl)' }} />
+          <div style={{ height: 40, width: 200, background: 'var(--surface)', borderRadius: 8 }} />
+          <div className="attr-grid">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ height: 60, background: 'var(--surface)', borderRadius: 'var(--r-lg)' }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!producto) return null;
+
+  const stockStatus = producto.stockActual === 0 ? 'Sin stock' :
+    producto.stockActual <= producto.stockMinimo ? 'Stock bajo' : `En stock: ${producto.stockActual}`;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="screen active">
+      <Link href="/inventario" className="crumb">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        Volver al inventario
+      </Link>
+
+      <div className="detail-hero">
+        <div className="shine" />
+        <svg className="big-ic" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+          <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+        </svg>
+      </div>
+
+      <div className="detail-head">
         <div>
-          <Link href="/inventario" className="text-zinc-400 hover:text-zinc-200 text-sm mb-1 block">
-            ← Volver al inventario
-          </Link>
-          <h1 className="text-2xl font-bold">{producto.nombre}</h1>
-          <p className="text-zinc-400 text-sm">PLU: {producto.plu} • {producto.codigoBarras || 'Sin código de barras'}</p>
-        </div>
-        {puedeEditar && (
-          <button
-            onClick={() => setEditando(!editando)}
-            className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg hover:bg-navy-700 transition-colors"
-          >
-            {editando ? 'Cancelar' : 'Editar'}
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
-          <div className="bg-navy-900/50 border border-navy-700 rounded-xl p-6 space-y-4">
-            <h2 className="font-semibold text-lg">Información</h2>
-            {editando ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <input
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Nombre"
-                  />
-                  <input
-                    value={formData.categoria}
-                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Categoría"
-                  />
-                  <input
-                    value={formData.marca}
-                    onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Marca"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.precioCompra}
-                    onChange={(e) => setFormData({ ...formData, precioCompra: Number(e.target.value) })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Precio compra"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.precioVenta}
-                    onChange={(e) => setFormData({ ...formData, precioVenta: Number(e.target.value) })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Precio venta"
-                  />
-                  <input
-                    type="number"
-                    value={formData.stockMinimo}
-                    onChange={(e) => setFormData({ ...formData, stockMinimo: Number(e.target.value) })}
-                    className="px-3 py-2 bg-navy-800 border border-navy-700 rounded-lg focus:ring-cyan-500 focus:border-transparent"
-                    placeholder="Stock mínimo"
-                  />
-                </div>
-                <button
-                  onClick={guardar}
-                  className="px-4 py-2 bg-cyan-500 text-navy-950 font-semibold rounded-lg hover:bg-cyan-400"
-                >
-                  Guardar cambios
-                </button>
-              </div>
-            ) : (
-              <dl className="grid grid-cols-2 gap-4 text-sm">
-                <dt className="text-zinc-500">Categoría</dt>
-                <dd className="font-medium">{producto.categoria}</dd>
-                <dt className="text-zinc-500">Marca</dt>
-                <dd className="font-medium">{producto.marca || '-'}</dd>
-                <dt className="text-zinc-500">Precio compra</dt>
-                <dd className="font-medium">{formatMoney(producto.precioCompra)}</dd>
-                <dt className="text-zinc-500">Precio venta</dt>
-                <dd className="font-medium">{formatMoney(producto.precioVenta)}</dd>
-                <dt className="text-zinc-500">Stock mínimo</dt>
-                <dd className="font-medium">{producto.stockMinimo}</dd>
-                <dt className="text-zinc-500">Ubicación</dt>
-                <dd className="font-medium">{producto.ubicacionId || '-'}</dd>
-              </dl>
-            )}
-          </div>
-
-          <div className="bg-navy-900/50 border border-navy-700 rounded-xl p-6">
-            <h2 className="font-semibold text-lg mb-4">Historial de movimientos (últimos 20)</h2>
-            {movimientos.length === 0 ? (
-              <p className="text-zinc-500 text-center py-8">Sin movimientos</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-zinc-500 border-b border-navy-700">
-                      <th className="pb-2 pr-4">Fecha</th>
-                      <th className="pb-2 pr-4">Tipo</th>
-                      <th className="pb-2 pr-4">Cantidad</th>
-                      <th className="pb-2 pr-4">Stock ant./desp.</th>
-                      <th className="pb-2 pr-4">Motivo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {movimientos.map((m) => (
-                      <tr key={m.id} className="border-b border-navy-800 last:border-0">
-                        <td className="py-2 pr-4 text-zinc-400">
-                          {new Date(m.createdAt).toLocaleString('es-AR')}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            m.tipo === 'entrada' ? 'bg-green-500/20 text-green-400' :
-                            m.tipo === 'salida' ? 'bg-red-500/20 text-red-400' :
-                            'bg-orange-500/20 text-orange-400'
-                          }`}>{m.tipo}</span>
-                        </td>
-                        <td className="py-2 pr-4">{m.cantidad}</td>
-                        <td className="py-2 pr-4 text-zinc-400">{m.stockAntes} → {m.stockDespues}</td>
-                        <td className="py-2 pr-4 text-zinc-400">{m.motivo || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <h2>{producto.nombre}</h2>
+          <div className="plu">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect width="10" height="10" x="7" y="7" rx="1"/></svg>
+            PLU: {producto.plu || '—'}
           </div>
         </div>
-
-        <div className="space-y-6">
-          <div className="bg-navy-900/50 border border-navy-700 rounded-xl p-6 text-center">
-            <p className="text-zinc-500 text-sm">Stock actual</p>
-            <p className={`text-5xl font-bold ${producto.stockActual <= producto.stockMinimo ? 'text-orange-400' : 'text-cyan-400'}`}>
-              {producto.stockActual}
-            </p>
-            <p className="text-zinc-500 text-sm mt-1">Mínimo: {producto.stockMinimo}</p>
-          </div>
-
-          {puedeAjustar && (
-            <div className="bg-navy-900/50 border border-navy-700 rounded-xl p-6 space-y-4">
-              <h3 className="font-semibold">Ajuste rápido</h3>
-              <div className="grid grid-cols-3 gap-2">
-                {['entrada', 'salida', 'ajuste'].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => ajustarStock(t as any, 1)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      t === 'entrada' ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' :
-                      t === 'salida' ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' :
-                      'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
-                    }`}
-                  >
-                    {t === 'entrada' ? '+' : t === 'salida' ? '-' : '='} 1
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => ajustarStock('entrada', 5)} className="py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 text-sm">+ 5</button>
-                <button onClick={() => ajustarStock('salida', 5)} className="py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm">- 5</button>
-              </div>
-            </div>
-          )}
+        <div className="stock-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          {stockStatus}
         </div>
       </div>
+
+      <div className="attr-grid">
+        <div className="attr"><span className="k">Marca</span><span className="v">{producto.marca || '—'}</span></div>
+        <div className="attr"><span className="k">Categoría</span><span className="v">{producto.categoria || '—'}</span></div>
+        <div className="attr"><span className="k">Precio compra</span><span className="v">{formatMoney(producto.precioCompra)}</span></div>
+        <div className="attr"><span className="k">Precio venta</span><span className="v money">{formatMoney(producto.precioVenta)}</span></div>
+        <div className="attr"><span className="k">Stock mínimo</span><span className="v warn">{producto.stockMinimo} uds</span></div>
+        <div className="attr"><span className="k">Ubicación</span><span className="v">{producto.ubicacionId || '—'}</span></div>
+      </div>
+
+      <div className="adjust">
+        <button className="in" onClick={() => ajustarStock('entrada', 1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+          Entrada
+        </button>
+        <button className="out" onClick={() => ajustarStock('salida', 1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+          Salida
+        </button>
+      </div>
+
+      {movimientos.length > 0 && (
+        <div className="panel">
+          <div className="p-head">
+            <h2>Movimientos recientes</h2>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {movimientos.map((m) => (
+              <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-high)', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)' }}>
+                <span style={{ fontSize: '.85rem', color: 'var(--text-dim)' }}>{m.tipo}</span>
+                <span style={{ fontSize: '.85rem', fontWeight: 600 }}>{m.cantidad}</span>
+                <span style={{ fontSize: '.78rem', color: 'var(--text-faint)' }}>{new Date(m.createdAt).toLocaleDateString('es-AR')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

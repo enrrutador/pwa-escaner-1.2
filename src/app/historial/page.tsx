@@ -1,168 +1,188 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { formatMoney } from '@/lib/utils';
+import { dbProductos } from '@/lib/db-productos';
 import { dbMovimientos } from '@/lib/db-movimientos';
-import { dbConteos } from '@/lib/db-conteos';
-import { useAuthStore } from '@/store/authStore';
-import { useUIStore } from '@/store/uiStore';
-
-type Filtro = 'todos' | 'entradas' | 'salidas' | 'ajustes' | 'conteos';
 
 export default function Historial() {
-  const { tienePermiso } = useAuthStore();
-  const { mostrarToast } = useUIStore();
-  const [filtro, setFiltro] = useState<Filtro>('todos');
-  const [movimientos, setMovimientos] = useState<any[]>([]);
-  const [conteos, setConteos] = useState<any[]>([]);
+  const [stats, setStats] = useState({ total: 0, valorTotal: 0, stockOptimo: 0, stockBajo: 0, sinStock: 0 });
   const [cargando, setCargando] = useState(true);
-  const [hasMore, setHasMore] = useState(false);
-  const [pagina, setPagina] = useState(1);
-
-  const cargar = async (pag = 1, append = false) => {
-    setCargando(true);
-    try {
-      if (filtro === 'conteos') {
-        const c = await dbConteos.listar();
-        setConteos(c);
-        setMovimientos([]);
-      } else {
-        const tipo = filtro === 'todos' ? undefined : filtro.slice(0, -1) as any;
-        const res = await dbMovimientos.listar({ tipo, pagina: pag, limite: 20 });
-        setMovimientos(append ? [...movimientos, ...res.items] : res.items);
-        setHasMore(res.hasMore);
-      }
-    } catch (e: any) {
-      mostrarToast('error', e.message);
-    } finally {
-      setCargando(false);
-    }
-  };
+  const donutRef = useRef<HTMLCanvasElement>(null);
+  const barsRef = useRef<HTMLCanvasElement>(null);
+  const lineRef = useRef<HTMLCanvasElement>(null);
+  const charted = useRef(false);
 
   useEffect(() => {
-    setPagina(1);
-    cargar(1, false);
-  }, [filtro]);
+    const cargar = async () => {
+      const res = await dbProductos.listar({ limite: 1000 });
+      const productos = res.items;
+      const total = productos.length;
+      const valorTotal = productos.reduce((s, p) => s + p.precioVenta * p.stockActual, 0);
+      const stockOptimo = productos.filter((p) => p.stockActual > p.stockMinimo).length;
+      const stockBajo = productos.filter((p) => p.stockActual > 0 && p.stockActual <= p.stockMinimo).length;
+      const sinStock = productos.filter((p) => p.stockActual === 0).length;
+      setStats({ total, valorTotal, stockOptimo, stockBajo, sinStock });
+      setCargando(false);
+    };
+    cargar();
+  }, []);
+
+  useEffect(() => {
+    if (cargando || charted.current) return;
+    if (!donutRef.current || !barsRef.current || !lineRef.current) return;
+
+    const loadCharts = async () => {
+      const Chart = (await import('chart.js/auto')).default;
+      const cs = getComputedStyle(document.documentElement);
+      const C = (n: string) => cs.getPropertyValue(n).trim();
+      const grid = 'oklch(38% 0.03 262 / .3)';
+      const tick = C('--text-faint');
+
+      Chart.defaults.font.family = 'Inter';
+      Chart.defaults.color = tick;
+
+      new Chart(donutRef.current!, {
+        type: 'doughnut',
+        data: {
+          labels: ['Óptimo', 'Bajo', 'Sin stock'],
+          datasets: [{
+            data: [stats.stockOptimo, stats.stockBajo, stats.sinStock],
+            backgroundColor: [C('--primary'), C('--warn'), C('--danger')],
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          cutout: '72%',
+          plugins: { legend: { display: false } },
+          responsive: true,
+          maintainAspectRatio: false,
+        },
+      });
+
+      new Chart(barsRef.current!, {
+        type: 'bar',
+        data: {
+          labels: ['Electrónica', 'Herramientas', 'Accesorios', 'Repuestos'],
+          datasets: [{
+            data: [450, 320, 210, 150],
+            backgroundColor: C('--primary'),
+            borderRadius: 6,
+            barThickness: 26,
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: { legend: { display: false } },
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { grid: { color: grid }, ticks: { color: tick } },
+            y: { grid: { display: false }, ticks: { color: C('--text-dim'), font: { weight: 'bold' as const } } },
+          },
+        },
+      });
+
+      new Chart(lineRef.current!, {
+        type: 'line',
+        data: {
+          labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+          datasets: [
+            { label: 'Entradas', data: [20, 40, 30, 70, 60, 90, 80], borderColor: C('--primary'), tension: 0.4, pointRadius: 0, borderWidth: 2.5 },
+            { label: 'Salidas', data: [10, 15, 50, 35, 25, 40, 45], borderColor: C('--warn'), borderDash: [5, 4], tension: 0.4, pointRadius: 0, borderWidth: 2 },
+          ],
+        },
+        options: {
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
+          },
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { grid: { display: false }, ticks: { color: tick } },
+            y: { grid: { color: grid }, ticks: { color: tick } },
+          },
+        },
+      });
+
+      charted.current = true;
+    };
+
+    loadCharts();
+  }, [cargando, stats]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Historial</h1>
-          <p className="text-zinc-400 text-sm">Movimientos y conteos</p>
+    <div className="screen active">
+      <div>
+        <p className="eyebrow">Dashboard general</p>
+        <h1 className="h-page">Métricas</h1>
+      </div>
+
+      <div className="metric-grid">
+        <div className="metric hl">
+          <div className="m-top">
+            <span className="m-label">Valor total</span>
+            <span className="m-chip">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+              2.4%
+            </span>
+          </div>
+          <div className="m-val">{formatMoney(stats.valorTotal)}</div>
+        </div>
+        <div className="metric">
+          <div className="m-top">
+            <span className="m-label">Items totales</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-faint)' }}><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          </div>
+          <div className="m-val">{stats.total.toLocaleString('es-AR')}</div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {(['todos', 'entradas', 'salidas', 'ajustes', 'conteos'] as Filtro[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFiltro(f)}
-            className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
-              filtro === f
-                ? 'bg-cyan-500 text-navy-950 font-semibold'
-                : 'bg-navy-800 text-zinc-300 hover:bg-navy-700'
-            }`}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
+      <div className="panel">
+        <div className="p-head">
+          <h2>Estado del stock</h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
+        <div className="donut-wrap">
+          <canvas ref={donutRef} />
+          <div className="donut-center">
+            <div>
+              <div className="dc-val">{stats.total.toLocaleString('es-AR')}</div>
+              <div className="dc-lbl">Total</div>
+            </div>
+          </div>
+        </div>
+        <div className="legend">
+          <div className="li">
+            <div className="l-name"><span className="sw" style={{ background: 'var(--primary)' }} />Stock óptimo</div>
+            <span className="l-val">{stats.total > 0 ? Math.round((stats.stockOptimo / stats.total) * 100) : 0}% · {stats.stockOptimo}</span>
+          </div>
+          <div className="li">
+            <div className="l-name"><span className="sw" style={{ background: 'var(--warn)' }} />Stock bajo</div>
+            <span className="l-val">{stats.total > 0 ? Math.round((stats.stockBajo / stats.total) * 100) : 0}% · {stats.stockBajo}</span>
+          </div>
+          <div className="li">
+            <div className="l-name"><span className="sw" style={{ background: 'var(--danger)' }} />Sin stock</div>
+            <span className="l-val">{stats.total > 0 ? Math.round((stats.sinStock / stats.total) * 100) : 0}% · {stats.sinStock}</span>
+          </div>
+        </div>
       </div>
 
-      {filtro === 'conteos' ? (
-        <div className="bg-navy-900/50 border border-navy-700 rounded-xl overflow-hidden">
-          {conteos.length === 0 && !cargando ? (
-            <p className="p-8 text-center text-zinc-500">No hay conteos registrados</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-zinc-500 border-b border-navy-700">
-                    <th className="p-3">Nombre</th>
-                    <th className="p-3">Tipo</th>
-                    <th className="p-3">Estado</th>
-                    <th className="p-3">Creado</th>
-                    <th className="p-3">Finalizado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {conteos.map((c) => (
-                    <tr key={c.id} className="border-b border-navy-800 hover:bg-navy-800/50">
-                      <td className="p-3 font-medium">{c.nombre}</td>
-                      <td className="p-3">{c.tipo}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          c.estado === 'finalizado' ? 'bg-green-500/20 text-green-400' :
-                          c.estado === 'en_progreso' ? 'bg-cyan-500/20 text-cyan-400' :
-                          'bg-orange-500/20 text-orange-400'
-                        }`}>
-                          {c.estado}
-                        </span>
-                      </td>
-                      <td className="p-3 text-zinc-400">{new Date(c.createdAt).toLocaleDateString('es-AR')}</td>
-                      <td className="p-3 text-zinc-400">{c.finalizadoAt ? new Date(c.finalizadoAt).toLocaleDateString('es-AR') : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      <div className="panel">
+        <div className="p-head">
+          <h2>Top categorías</h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
         </div>
-      ) : (
-        <div className="bg-navy-900/50 border border-navy-700 rounded-xl overflow-hidden">
-          {movimientos.length === 0 && !cargando ? (
-            <p className="p-8 text-center text-zinc-500">No hay movimientos</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-zinc-500 border-b border-navy-700">
-                    <th className="p-3">Fecha</th>
-                    <th className="p-3">Tipo</th>
-                    <th className="p-3">Producto</th>
-                    <th className="p-3">Cant.</th>
-                    <th className="p-3">Stock A/D</th>
-                    <th className="p-3">Motivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movimientos.map((m) => (
-                    <tr key={m.id} className="border-b border-navy-800 hover:bg-navy-800/50">
-                      <td className="p-3 text-zinc-400">{new Date(m.createdAt).toLocaleString('es-AR')}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          m.tipo === 'entrada' ? 'bg-green-500/20 text-green-400' :
-                          m.tipo === 'salida' ? 'bg-red-500/20 text-red-400' :
-                          m.tipo === 'ajuste' ? 'bg-orange-500/20 text-orange-400' :
-                          'bg-violet-500/20 text-violet-400'
-                        }`}>
-                          {m.tipo}
-                        </span>
-                      </td>
-                      <td className="p-3 font-medium">{m.productoId}</td>
-                      <td className="p-3">{m.cantidad}</td>
-                      <td className="p-3 text-zinc-400">{m.stockAntes} → {m.stockDespues}</td>
-                      <td className="p-3 text-zinc-400">{m.motivo || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+        <div className="chart-wrap"><canvas ref={barsRef} /></div>
+      </div>
 
-      {hasMore && (
-        <div className="text-center">
-          <button
-            onClick={() => cargar(pagina + 1, true)}
-            disabled={cargando}
-            className="px-6 py-3 bg-navy-800 border border-navy-700 rounded-xl text-zinc-300 hover:bg-navy-700 disabled:opacity-50 transition-colors"
-          >
-            {cargando ? 'Cargando...' : 'Cargar más'}
-          </button>
+      <div className="panel">
+        <div className="p-head">
+          <h2>Tendencia (7 días)</h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         </div>
-      )}
+        <div className="chart-wrap"><canvas ref={lineRef} /></div>
+      </div>
     </div>
   );
 }

@@ -12,7 +12,15 @@ export default function NuevoProducto() {
   const { mostrarToast } = useUIStore();
   const [cargando, setCargando] = useState(false);
 
-  if (!tienePermiso('productos:crear')) return <div className="p-8 text-center text-red-400">Sin permisos</div>;
+  if (!tienePermiso('productos:crear')) {
+    return (
+      <div className="screen active">
+        <div className="empty">
+          <p>Sin permisos para crear productos</p>
+        </div>
+      </div>
+    );
+  }
 
   const [form, setForm] = useState({
     plu: '',
@@ -29,8 +37,8 @@ export default function NuevoProducto() {
 
   const crear = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nombre || !form.codigoBarras) {
-      mostrarToast('error', 'Nombre y código de barras son obligatorios');
+    if (!form.nombre) {
+      mostrarToast('error', 'El nombre es obligatorio');
       return;
     }
     setCargando(true);
@@ -46,106 +54,65 @@ export default function NuevoProducto() {
   };
 
   return (
-    <form onSubmit={crear} className="max-w-xl space-y-6">
+    <div className="screen active">
       <div>
-        <h1 className="text-2xl font-bold mb-2">Nuevo producto</h1>
-        <p className="text-zinc-400 text-sm">Completá los datos del producto</p>
+        <p className="eyebrow">Inventario</p>
+        <h1 className="h-page">Nuevo producto</h1>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="block text-sm text-zinc-400 mb-1">Nombre *</label>
-          <input
-            value={form.nombre}
-            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-            placeholder="Ej: Leche Entera 1L"
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
+      <form onSubmit={crear} className="form-panel">
+        <div className="fp-head">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <h2>Datos del producto</h2>
         </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">PLU</label>
-          <input
-            value={form.plu}
-            onChange={(e) => setForm({ ...form, plu: e.target.value })}
-            placeholder="Ej: 0001"
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
+        <div className="fgrid">
+          <div className="field">
+            <label>EAN</label>
+            <input type="text" value={form.codigoBarras} onChange={(e) => setForm({ ...form, codigoBarras: e.target.value })} placeholder="Ej. 8431057002018" />
+          </div>
+          <div className="field">
+            <label>PLU (interno)</label>
+            <input type="text" value={form.plu} onChange={(e) => setForm({ ...form, plu: e.target.value })} placeholder="Ej. 1045" />
+          </div>
+          <div className="field full">
+            <label>Nombre <span className="req">*</span></label>
+            <input type="text" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required placeholder="Nombre del producto" />
+          </div>
+          <div className="field">
+            <label>Marca</label>
+            <input type="text" value={form.marca} onChange={(e) => setForm({ ...form, marca: e.target.value })} placeholder="Marca" />
+          </div>
+          <div className="field">
+            <label>Categoría</label>
+            <input type="text" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Categoría" />
+          </div>
+          <div className="field">
+            <label>Precio compra</label>
+            <input type="number" step="0.01" value={form.precioCompra || ''} onChange={(e) => setForm({ ...form, precioCompra: Number(e.target.value) })} />
+          </div>
+          <div className="field">
+            <label>Precio venta</label>
+            <input type="number" step="0.01" value={form.precioVenta || ''} onChange={(e) => setForm({ ...form, precioVenta: Number(e.target.value) })} />
+          </div>
+          <div className="field">
+            <label>Stock actual</label>
+            <input type="number" value={form.stockActual} onChange={(e) => setForm({ ...form, stockActual: Number(e.target.value) })} />
+          </div>
+          <div className="field">
+            <label>Stock mínimo</label>
+            <input type="number" value={form.stockMinimo} onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })} />
+          </div>
+          <div className="field full" style={{ gap: 10, marginTop: 4 }}>
+            <button type="submit" className="btn-primary" disabled={cargando}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              {cargando ? 'Guardando...' : 'Guardar producto'}
+            </button>
+            <button type="button" onClick={() => router.back()} className="btn-ghost">
+              Cancelar
+            </button>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Código de barras *</label>
-          <input
-            value={form.codigoBarras}
-            onChange={(e) => setForm({ ...form, codigoBarras: e.target.value })}
-            placeholder="Ej: 7790070001234"
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Categoría</label>
-          <input
-            value={form.categoria}
-            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-            placeholder="Ej: Lácteos"
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Marca</label>
-          <input
-            value={form.marca}
-            onChange={(e) => setForm({ ...form, marca: e.target.value })}
-            placeholder="Ej: La Serenísima"
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Precio compra</label>
-          <input
-            type="number"
-            step="0.01"
-            value={form.precioCompra}
-            onChange={(e) => setForm({ ...form, precioCompra: Number(e.target.value) })}
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Precio venta</label>
-          <input
-            type="number"
-            step="0.01"
-            value={form.precioVenta}
-            onChange={(e) => setForm({ ...form, precioVenta: Number(e.target.value) })}
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Stock actual</label>
-          <input
-            type="number"
-            value={form.stockActual}
-            onChange={(e) => setForm({ ...form, stockActual: Number(e.target.value) })}
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1">Stock mínimo</label>
-          <input
-            type="number"
-            value={form.stockMinimo}
-            onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })}
-            className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-3 pt-4">
-        <button type="button" onClick={() => router.back()} className="flex-1 px-4 py-3 bg-navy-800 border border-navy-700 rounded-xl text-zinc-300 hover:bg-navy-700">
-          Cancelar
-        </button>
-        <button type="submit" disabled={cargando} className="flex-1 px-4 py-3 bg-cyan-500 text-navy-950 font-semibold rounded-xl hover:bg-cyan-400 disabled:opacity-50">
-          {cargando ? 'Creando...' : 'Crear producto'}
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

@@ -6,207 +6,151 @@ import { formatMoney } from '@/lib/utils';
 import { useProductos } from '@/hooks/useProductos';
 import { dbAlertas } from '@/lib/db-alertas';
 import { dbConteos } from '@/lib/db-conteos';
+import { dbEscaneos } from '@/lib/db-escaneos';
 import { useAuthStore } from '@/store/authStore';
-import { useUIStore } from '@/store/uiStore';
+
+function StatIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+      <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+    </svg>
+  );
+}
 
 export default function Dashboard() {
-  const { usuario, inicializado, inicializar, login } = useAuthStore();
-  const { mostrarToast } = useUIStore();
-  const { productos, cargando: cargandoProd, recargar: recargarProd } = useProductos({ limite: 5 });
+  const { usuario, inicializado } = useAuthStore();
+  const { productos, cargando: cargandoProd } = useProductos({ limite: 100 });
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [conteosAbiertos, setConteosAbiertos] = useState(0);
-  const [loginForm, setLoginForm] = useState({ nombre: '', pin: '' });
-  const [logueando, setLogueando] = useState(false);
-
-  useEffect(() => {
-    inicializar();
-  }, [inicializar]);
+  const [ultimosEscaneos, setUltimosEscaneos] = useState<Array<{ id: string; codigo: string; nombre?: string; createdAt: number }>>([]);
 
   useEffect(() => {
     if (!inicializado) return;
     dbAlertas.contarNoLeidas().then(setAlertasNoLeidas);
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
+    dbEscaneos.listar({ limite: 5 }).then(setUltimosEscaneos).catch(() => {});
   }, [inicializado]);
 
   if (!inicializado) {
     return (
-      <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-48 bg-navy-800 rounded" />
-          <div className="h-4 w-64 bg-navy-800 rounded" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="p-4 rounded-xl border border-navy-700 bg-navy-900/50 animate-pulse">
-              <div className="h-4 w-24 bg-navy-800 rounded mb-2" />
-              <div className="h-12 w-16 bg-navy-800 rounded" />
-            </div>
-          ))}
+      <div className="screen active">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>Panel principal</div>
+            <div style={{ height: 32, width: 200, background: 'var(--surface)', borderRadius: 8 }} />
+          </div>
+          <div style={{ height: 120, background: 'var(--surface)', borderRadius: 'var(--r-2xl)' }} />
+          <div className="tile-grid">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ aspectRatio: '1', background: 'var(--surface-low)', borderRadius: 'var(--r-2xl)' }} />
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!usuario) {
-    return (
-      <div className="max-w-md mx-auto mt-20 space-y-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold mb-2">StockMaster</h1>
-          <p className="text-zinc-400">Iniciar sesión</p>
-        </div>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setLogueando(true);
-            const res = await login(loginForm.nombre, loginForm.pin);
-            if (!res.ok) {
-              mostrarToast('error', res.error || 'Error al iniciar sesión');
-            }
-            setLogueando(false);
-          }}
-          className="space-y-4"
-        >
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">Usuario</label>
-            <input
-              type="text"
-              value={loginForm.nombre}
-              onChange={(e) => setLoginForm({ ...loginForm, nombre: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent"
-              placeholder="Marcelo"
-              required
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">PIN</label>
-            <input
-              type="password"
-              value={loginForm.pin}
-              onChange={(e) => setLoginForm({ ...loginForm, pin: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-900 border border-navy-700 rounded-xl text-white placeholder-zinc-500 focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent"
-              placeholder="1234"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={logueando}
-            className="w-full py-3 bg-cyan-500 text-navy-950 font-semibold rounded-xl hover:bg-cyan-400 disabled:opacity-50"
-          >
-            {logueando ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-        <p className="text-center text-zinc-500 text-sm">
-          Demo: <strong>Marcelo</strong> / <strong>1234</strong>
-        </p>
-      </div>
-    );
-  }
-
-  const stats = [
-    { label: 'Productos', valor: productos.length, icon: '📦', color: 'border-l-4 border-cyan-500' },
-    { label: 'Alertas', valor: alertasNoLeidas, icon: '⚠️', color: 'border-l-4 border-orange-500' },
-    { label: 'Conteos abiertos', valor: conteosAbiertos, icon: '📋', color: 'border-l-4 border-orange-500' },
-    { label: 'Stock crítico', valor: productos.filter(p => p.stockActual <= p.stockMinimo).length, icon: '🔴', color: 'border-l-4 border-red-500' },
-  ];
+  const totalProductos = productos.length;
+  const stockBajo = productos.filter((p) => p.stockActual > 0 && p.stockActual <= p.stockMinimo).length;
+  const sinStock = productos.filter((p) => p.stockActual === 0).length;
+  const enStock = totalProductos - sinStock;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="screen active">
+      <div>
+        <p className="eyebrow">Panel principal</p>
+        <h1 className="h-page">Buenas, {usuario?.nombre || 'Usuario'}</h1>
+      </div>
+
+      <div className="stat-hero">
+        <div className="glow" />
+        <div className="row">
+          <div>
+            <div className="label">Total de artículos</div>
+            <div className="value">{totalProductos.toLocaleString('es-AR')}</div>
+          </div>
+          <div className="badge-icon"><StatIcon /></div>
+        </div>
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-zinc-400 text-sm">Bienvenido, {usuario.nombre}</p>
+          {stockBajo > 0 && (
+            <>
+              <span className="trend">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                {stockBajo} bajo
+              </span>
+              <span>stock mínimo</span>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, i) => (
-          <div key={i} className={`p-4 rounded-xl border border-navy-700 bg-navy-900/50 ${stat.color}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wide opacity-80">{stat.label}</p>
-                <p className="text-3xl font-bold mt-1">{stat.valor}</p>
-              </div>
-              <span className="text-3xl">{stat.icon}</span>
+      <div className="tile-grid">
+        <button className="tile warn">
+          <div className="t-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          </div>
+          <div>
+            <div className="t-name">Stock bajo</div>
+            <div className="t-sub">{stockBajo + sinStock} artículos</div>
+          </div>
+        </button>
+        <Link href="/historial" className="tile blue">
+          <div className="t-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+          </div>
+          <div>
+            <div className="t-name">Dashboard</div>
+            <div className="t-sub">Métricas y tendencia</div>
+          </div>
+        </Link>
+      </div>
+
+      <div>
+        <p className="eyebrow" style={{ marginBottom: 12 }}>Gestión de datos</p>
+        <div className="tile-grid">
+          <button className="tile cyan" style={{ aspectRatio: 'auto', padding: 18 }}>
+            <div className="t-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
             </div>
-          </div>
-        ))}
+            <div className="t-name">Importar Excel</div>
+          </button>
+          <button className="tile cyan" style={{ aspectRatio: 'auto', padding: 18 }}>
+            <div className="t-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </div>
+            <div className="t-name">Exportar Excel</div>
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border border-navy-700 bg-navy-900/50 p-4">
-          <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <span>⚠️</span> Alertas sin leer: {alertasNoLeidas}
-          </h2>
-          {alertasNoLeidas > 0 ? (
-            <Link
-              href="/ajustes"
-              className="inline-flex items-center gap-2 px-3 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg text-sm hover:bg-cyan-500/30 transition-colors"
-            >
-              Ver alertas →
-            </Link>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 className="section-title">Últimos escaneos</h3>
+          <Link href="/inventario" className="link">Ver todo</Link>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {ultimosEscaneos.length === 0 ? (
+            <div className="empty">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
+              <p>Escaneá productos para ver el historial</p>
+            </div>
           ) : (
-            <p className="text-zinc-500 text-sm">Todo tranquilo</p>
+            ultimosEscaneos.map((e) => (
+              <div key={e.id} className="scan-row">
+                <div className="thumb">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect width="10" height="10" x="7" y="7" rx="1"/></svg>
+                </div>
+                <div className="info">
+                  <div className="name">{e.nombre || e.codigo}</div>
+                  <div className="time">{new Date(e.createdAt).toLocaleDateString('es-AR')}</div>
+                </div>
+                <div className="sku">#{e.codigo}</div>
+              </div>
+            ))
           )}
-        </section>
-
-        <section className="rounded-xl border border-navy-700 bg-navy-900/50 p-4">
-          <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <span>📋</span> Conteos abiertos: {conteosAbiertos}
-          </h2>
-          {conteosAbiertos > 0 ? (
-            <Link
-              href="/historial"
-              className="inline-flex items-center gap-2 px-3 py-2 bg-orange-500/20 text-orange-400 rounded-lg text-sm hover:bg-orange-500/30 transition-colors"
-            >
-              Continuar conteo →
-            </Link>
-          ) : (
-            <p className="text-zinc-500 text-sm">No hay conteos en progreso</p>
-          )}
-        </section>
+        </div>
       </div>
-
-      <section className="rounded-xl border border-navy-700 bg-navy-900/50 p-4">
-        <h2 className="font-semibold mb-3">Productos recientes</h2>
-        {cargandoProd ? (
-          <p className="text-zinc-500">Cargando...</p>
-        ) : productos.length === 0 ? (
-          <p className="text-zinc-500">No hay productos. Agregá uno desde Inventario.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-zinc-500 border-b border-navy-700">
-                  <th className="pb-2 pr-4">PLU</th>
-                  <th className="pb-2 pr-4">Producto</th>
-                  <th className="pb-2 pr-4">Stock</th>
-                  <th className="pb-2 pr-4">Precio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productos.slice(0, 5).map((p) => (
-                  <tr key={p.id} className="border-b border-navy-800 last:border-0 hover:bg-navy-800/50">
-                    <td className="py-2 pr-4 font-mono text-cyan-400">{p.plu}</td>
-                    <td className="py-2 pr-4">
-                      <Link href={`/producto/${p.id}`} className="hover:text-cyan-400 transition-colors">
-                        {p.nombre}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span className={p.stockActual <= p.stockMinimo ? 'text-orange-400' : ''}>
-                        {p.stockActual}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4">{formatMoney(p.precioVenta)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

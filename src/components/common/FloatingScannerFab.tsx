@@ -1,17 +1,54 @@
 'use client';
 
+import { useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 
 export function FloatingScannerFab() {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+  const moved = useRef(false);
+  const start = useRef({ x: 0, y: 0 });
+  const origRect = useRef({ left: 0, top: 0 });
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    moved.current = false;
+    dragging.current = true;
+    start.current = { x: e.clientX, y: e.clientY };
+    const r = (e.target as HTMLElement).getBoundingClientRect();
+    origRect.current = { left: r.left, top: r.top };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const dx = e.clientX - start.current.x;
+    const dy = e.clientY - start.current.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
+    if (moved.current) {
+      setPos({ x: origRect.current.left + dx, y: origRect.current.top + dy });
+    }
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
+
   return (
     <Link
       href="/scanner"
-      className="fixed bottom-6 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-950"
-      aria-label="Abrir escáner"
+      className="fab"
+      style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClick={(e) => { if (moved.current) e.preventDefault(); }}
     >
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17l4 4m0 0l-4 4m4-4H3" />
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+        <rect width="10" height="10" x="7" y="7" rx="1" />
       </svg>
     </Link>
   );
