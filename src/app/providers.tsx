@@ -1,12 +1,14 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { useUIStore } from '@/store/uiStore';
 
 export function Providers({ children }: { children: ReactNode }) {
-  // Initialize stores on client
-  useAuthStore.getState().inicializar();
+  const inicializar = useAuthStore((s) => s.inicializar);
+
+  useEffect(() => {
+    inicializar();
+  }, [inicializar]);
 
   return <>{children}</>;
 }
