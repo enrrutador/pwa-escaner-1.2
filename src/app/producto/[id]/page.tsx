@@ -69,13 +69,35 @@ export default function ProductoDetalle() {
       <div className="detail-hero">
         <div className="shine" />
         {producto.imagen ? (
-          <img src={producto.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={producto.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} />
         ) : (
           <svg className="big-ic" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
             <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
           </svg>
         )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button
+          onClick={() => router.push(`/producto/${id}/editar`)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 16px',
+            background: 'var(--surface-high)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-lg)',
+            color: 'var(--primary)',
+            fontWeight: 600,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          Editar
+        </button>
       </div>
 
       <div className="detail-head">

@@ -88,10 +88,10 @@ export default function Inventario() {
           productosFiltrados.map((p) => {
             const st = getStockStatus(p);
             return (
-              <Link key={p.id} href={`/producto/${p.id}`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
+              <Link key={p.id} href={`/producto/${p.id}/editar`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
                 <div className="pimg">
                   {p.imagen ? (
-                    <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-lg)' }} />
+                    <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} />
                   ) : (
                     <ProductIcon />
                   )}

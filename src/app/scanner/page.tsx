@@ -59,7 +59,7 @@ function ScannerInner() {
         nombreProducto: producto.nombre,
         imagen: producto.imagen ?? null,
       });
-      setResultado({ producto, fuente: 'local' });
+      router.push(`/producto/${producto.id}`);
       return;
     }
 
@@ -93,12 +93,12 @@ function ScannerInner() {
         });
         router.push(`/inventario/nuevo?${params.toString()}`);
       } else {
-        setResultado({ producto: { codigo: cod, nombre: 'No encontrado' }, fuente: 'ninguna' });
         await dbEscaneos.registrar({ 
           codigo: cod, 
           origen: 'camara', 
           resultado: 'no_encontrado' 
         });
+        router.push(`/inventario/nuevo?cod=${encodeURIComponent(cod)}`);
       }
     } catch (e: any) {
       mostrarToast('error', 'Error en búsqueda: ' + e.message);

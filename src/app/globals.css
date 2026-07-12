@@ -35,7 +35,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body { overflow-x: hidden; }
 
 body {
   font-family: Inter, system-ui, sans-serif;
@@ -71,6 +72,7 @@ input, select, textarea { font-family: inherit; }
   display: flex; flex-direction: column;
   box-shadow: 0 0 0 1px var(--line-soft), 0 40px 80px -20px oklch(8% 0.02 262);
   overflow: hidden;
+  overflow-x: hidden;
 }
 @media (min-width: 520px) {
   .app { min-height: min(920px, 100dvh); margin: 24px auto; border-radius: 28px; }
