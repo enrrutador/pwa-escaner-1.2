@@ -18,7 +18,7 @@ function createPNG(size, r, g, b) {
   return svg;
 }
 
-const iconsDir = path.join(__dirname, 'public', 'icons');
+const iconsDir = path.join(__dirname, '..', 'public', 'icons');
 if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true });
 
 // Generate SVG icons (browsers support SVG in manifest for modern PWAs)

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="28.799999999999997" fill="oklch(18% 0.03 262)"/>
+  <text x="50%" y="48%" text-anchor="middle" dominant-baseline="central" 
+        font-family="Inter,system-ui,sans-serif" font-weight="800" 
+        font-size="67.19999999999999" fill="oklch(72% 0.13 258)">S</text>
+  <text x="50%" y="72%" text-anchor="middle" dominant-baseline="central" 
+        font-family="Inter,system-ui,sans-serif" font-weight="600" 
+        font-size="19.200000000000003" fill="oklch(78% 0.025 262)">STOCKMASTER</text>
+</svg>
