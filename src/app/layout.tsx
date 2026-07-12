@@ -42,6 +42,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js" crossOrigin="anonymous" />
       </head>
       <body className={inter.className}>
         <Providers>{children}</Providers>

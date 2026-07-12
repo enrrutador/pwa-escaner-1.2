@@ -21,7 +21,7 @@ export interface BarcodeScannerHandle {
   apagarCamara: () => void;
 }
 
-type CameraState = 'idle' | 'requesting' | 'active' | 'denied' | 'error';
+type CameraState = 'idle' | 'active' | 'denied' | 'error';
 
 function matarStream(stream: MediaStream | null) {
   if (!stream) return;
@@ -45,59 +45,79 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const streamRef = useRef<MediaStream | null>(null);
     const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
     const mountedRef = useRef(true);
-    const initTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const primeraAperturaRef = useRef(true);
 
     const [cameraState, setCameraState] = useState<CameraState>('idle');
     const [torchOn, setTorchOn] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
 
-    const detenerTodo = useCallback(() => {
-      // 1. Detener el loop de decodificación (CRÍTICO: mata requestAnimationFrame)
+    const pausarDecodificacion = useCallback(() => {
       if (controlsRef.current) {
         try { controlsRef.current.stop(); } catch {}
         controlsRef.current = null;
       }
-
-      // 2. Reset del reader (compat)
       if (readerRef.current) {
         try { readerRef.current.reset?.(); } catch {}
         readerRef.current = null;
       }
-
-      // 3. Matar stream
-      matarStream(streamRef.current);
-      streamRef.current = null;
-
-      // 4. Limpiar video
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-        videoRef.current.load();
-      }
-
-      setTorchOn(false);
-      setTorchAvailable(false);
       if (mountedRef.current) {
         setCameraState('idle');
       }
     }, []);
 
+    const apagarCamaraCompleto = useCallback(() => {
+      pausarDecodificacion();
+      matarStream(streamRef.current);
+      streamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+        videoRef.current.load();
+      }
+      setTorchOn(false);
+      setTorchAvailable(false);
+      if (mountedRef.current) {
+        setCameraState('idle');
+      }
+    }, [pausarDecodificacion]);
+
     const inicializar = useCallback(async () => {
       if (!mountedRef.current) return;
       if (cameraState === 'active') return;
+      if (streamRef.current) {
+        await reanudarDecodificacion();
+        return;
+      }
 
-      setCameraState('requesting');
-
-      if (esIOS()) {
+      // Delay iOS SOLO en reinicios (no en primera apertura)
+      if (!primeraAperturaRef.current && esIOS()) {
         await new Promise((r) => setTimeout(r, 300));
         if (!mountedRef.current) return;
       }
+      primeraAperturaRef.current = false;
 
       try {
-        // Dynamic import: ZXing ~300kb solo se descarga al escanear
-        // Reader de @zxing/browser (devuelve controls con .stop())
-        // Tipos de @zxing/library
-        const { BrowserMultiFormatReader } = await import('@zxing/browser');
-        const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
+        // Paralelo: ZXing + getUserMedia
+        const [zxingBrowser, zxingLib, stream] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+          navigator.mediaDevices?.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+              ...(esIOS() ? { frameRate: { ideal: 24, max: 30 } } : {}),
+            },
+            audio: false,
+          }),
+        ]);
+
+        if (!mountedRef.current) {
+          matarStream(stream);
+          return;
+        }
+
+        const { BrowserMultiFormatReader } = zxingBrowser;
+        const { DecodeHintType, BarcodeFormat } = zxingLib;
 
         const hints = new Map();
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -110,26 +130,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           BarcodeFormat.QR_CODE,
         ]);
         hints.set(DecodeHintType.TRY_HARDER, true);
-
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setCameraState('error');
-          return;
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-            ...(esIOS() ? { frameRate: { ideal: 24, max: 30 } } : {}),
-          },
-          audio: false,
-        });
-
-        if (!mountedRef.current) {
-          matarStream(stream);
-          return;
-        }
 
         streamRef.current = stream;
 
@@ -154,7 +154,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         const reader = new BrowserMultiFormatReader(hints);
         readerRef.current = reader;
 
-        // @zxing/browser decodeFromVideoElement devuelve controles con .stop()
         const controls = await reader.decodeFromVideoElement(
           videoRef.current!,
           (result: any, _err: any, _ctrl: any) => {
@@ -178,7 +177,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           }
         );
 
-        // Guardar controles para poder frenar el loop en detenerTodo()
         controlsRef.current = controls;
       } catch (err: any) {
         if (!mountedRef.current) return;
@@ -191,32 +189,82 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       }
     }, [cameraState, cooldownMs, onScan]);
 
+    const reanudarDecodificacion = useCallback(async () => {
+      if (!mountedRef.current) return;
+      if (!streamRef.current || !videoRef.current) return;
+      if (controlsRef.current) return;
+
+      try {
+        const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+        ]);
+
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.QR_CODE,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const reader = new BrowserMultiFormatReader(hints);
+        readerRef.current = reader;
+
+        const controls = await reader.decodeFromVideoElement(
+          videoRef.current,
+          (result: any, _err: any, _ctrl: any) => {
+            if (!result || !mountedRef.current) return;
+
+            const codigo = result.getText().trim();
+            const formato = BarcodeFormat[result.getBarcodeFormat()] ?? 'UNKNOWN';
+            const ahora = Date.now();
+
+            if (
+              codigo === lastScanRef.current.code &&
+              ahora - lastScanRef.current.time < cooldownMs
+            ) return;
+
+            if (codigo.length < 4) return;
+
+            lastScanRef.current = { code: codigo, time: ahora };
+            if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+
+            onScan(codigo, formato);
+          }
+        );
+
+        controlsRef.current = controls;
+        if (mountedRef.current) setCameraState('active');
+      } catch (err) {
+        console.error('[scanner] reanudarDecodificacion error:', err);
+      }
+    }, [cooldownMs, onScan]);
+
     useEffect(() => {
       if (activo) {
-        initTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) inicializar();
-        }, 50);
+        if (mountedRef.current) inicializar();
       } else {
-        if (initTimeoutRef.current) {
-          clearTimeout(initTimeoutRef.current);
-          initTimeoutRef.current = null;
-        }
-        detenerTodo();
+        pausarDecodificacion();
       }
-    }, [activo, inicializar, detenerTodo]);
+    }, [activo, inicializar, pausarDecodificacion]);
 
     useEffect(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
-        detenerTodo();
+        apagarCamaraCompleto();
       };
-    }, [detenerTodo]);
+    }, [apagarCamaraCompleto]);
 
     useEffect(() => {
       const handler = () => {
         if (document.hidden) {
-          detenerTodo();
+          pausarDecodificacion();
         } else if (activo && cameraState === 'idle') {
           setTimeout(() => {
             if (mountedRef.current && activo) inicializar();
@@ -225,7 +273,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       };
       document.addEventListener('visibilitychange', handler);
       return () => document.removeEventListener('visibilitychange', handler);
-    }, [activo, cameraState, detenerTodo, inicializar]);
+    }, [activo, cameraState, pausarDecodificacion, inicializar]);
 
     const alternarTorch = useCallback(async (): Promise<boolean> => {
       const track = streamRef.current?.getVideoTracks()[0];
@@ -244,8 +292,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     useImperativeHandle(ref, () => ({
       alternarTorch,
       hasTorch: () => torchAvailable,
-      apagarCamara: detenerTodo,
-    }), [alternarTorch, torchAvailable, detenerTodo]);
+      apagarCamara: apagarCamaraCompleto,
+    }), [alternarTorch, torchAvailable, apagarCamaraCompleto]);
 
     return (
       <div className="scanner-camera-container">
@@ -256,15 +304,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           muted
           className="absolute inset-0 w-full h-full object-cover"
         />
-
-        {cameraState === 'requesting' && (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-black/80">
-            <div className="text-center px-6">
-              <div className="scanner-pulse mx-auto mb-4 h-12 w-12 rounded-full border-2 border-primary" />
-              <p className="text-sm text-text-dim">Accediendo a la cámara...</p>
-            </div>
-          </div>
-        )}
 
         {cameraState === 'denied' && (
           <div className="absolute inset-0 z-10 grid place-items-center bg-black/90">
