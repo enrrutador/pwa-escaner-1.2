@@ -64,6 +64,33 @@ function NuevoProductoInner() {
     }
     setCargando(true);
     try {
+      // Verificar duplicado por codigoBarras
+      if (form.codigoBarras) {
+        const existente = await dbProductos.obtenerPorCodigoBarras(form.codigoBarras);
+        if (existente) {
+          mostrarToast('info', 'Ya existe un producto con ese código. Abriendo...');
+          router.push(`/producto/${existente.id}/editar`);
+          return;
+        }
+      }
+      // Verificar duplicado por PLU
+      if (form.plu) {
+        const existente = await dbProductos.obtenerPorPlu(form.plu);
+        if (existente) {
+          mostrarToast('info', 'Ya existe un producto con ese PLU. Abriendo...');
+          router.push(`/producto/${existente.id}/editar`);
+          return;
+        }
+      }
+      // Verificar duplicado por nombre exacto
+      const todos = await dbProductos.listar({ busqueda: form.nombre, limite: 100 });
+      const mismoNombre = todos.items.find(p => p.nombre.toLowerCase() === form.nombre.toLowerCase());
+      if (mismoNombre) {
+        mostrarToast('info', 'Ya existe un producto con ese nombre. Abriendo...');
+        router.push(`/producto/${mismoNombre.id}/editar`);
+        return;
+      }
+
       await dbProductos.crear({
         plu: form.plu,
         codigoBarras: form.codigoBarras,
