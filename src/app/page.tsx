@@ -397,32 +397,29 @@ export default function Dashboard() {
                     </button>
                   </div>
                 )}
-                {!buscando && resultados.length > 0 && (
+{!buscando && resultados.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {resultados.map((p) => {
                       const isExternal = p._externo === true;
-                      const handleClick = () => {
-                        setBuscadorOpen(false);
-                        if (isExternal) {
-                          const params = new URLSearchParams({
-                            nom: p.nombre || '',
-                            cod: p.codigoBarras || '',
-                            img: p.imagen || '',
-                            des: p.descripcion || '',
-                            mar: p.marca || '',
-                            pre: String(p.precioVenta || ''),
-                            cat: p.categoria || '',
-                          });
-                          router.push(`/inventario/nuevo?${params.toString()}`);
-                        }
-                      };
-                      const href = isExternal ? `/inventario/nuevo` : `/producto/${p.id}/editar`;
+                      const externalParams = new URLSearchParams({
+                        nom: p.nombre || '',
+                        cod: p.codigoBarras || '',
+                        img: p.imagen || '',
+                        des: p.descripcion || '',
+                        mar: p.marca || '',
+                        pre: String(p.precioVenta || ''),
+                        cat: p.categoria || '',
+                      }).toString();
+                      
+                      const externalHref = `/inventario/nuevo?${externalParams}`;
+                      const localHref = `/producto/${p.id}/editar`;
+                      const href = isExternal ? externalHref : localHref;
                       
                       return (
                         <Link
                           key={p.id}
                           href={href}
-                          onClick={handleClick}
+                          onClick={() => setBuscadorOpen(false)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
