@@ -5,44 +5,117 @@ import { formatMoney } from '@/lib/utils';
 import { dbProductos } from '@/lib/db-productos';
 import { dbMovimientos } from '@/lib/db-movimientos';
 
+interface Stats {
+  total: number;
+  valorTotal: number;
+  valorTotalPrev: number;
+  valorPct: number;
+  stockOptimo: number;
+  stockBajo: number;
+  sinStock: number;
+  catsData: { nombre: string; valor: number }[];
+  TrendData: { labels: string[]; entradas: number[]; salidas: number[] };
+}
+
 export default function Historial() {
-  const [stats, setStats] = useState({ total: 0, valorTotal: 0, stockOptimo: 0, stockBajo: 0, sinStock: 0 });
+  const [stats, setStats] = useState<Stats>({
+    total: 0, valorTotal: 0, valorTotalPrev: 0, valorPct: 0,
+    stockOptimo: 0, stockBajo: 0, sinStock: 0,
+    catsData: [], TrendData: { labels: [], entradas: [], salidas: [] },
+  });
   const [cargando, setCargando] = useState(true);
   const donutRef = useRef<HTMLCanvasElement>(null);
   const barsRef = useRef<HTMLCanvasElement>(null);
   const lineRef = useRef<HTMLCanvasElement>(null);
-  const charted = useRef(false);
+  const chartsRef = useRef<any[]>([]);
 
   useEffect(() => {
     const cargar = async () => {
-      const res = await dbProductos.listar({ limite: 1000 });
+      const res = await dbProductos.listar({ limite: 9999 });
       const productos = res.items;
       const total = productos.length;
       const valorTotal = productos.reduce((s, p) => s + p.precioVenta * p.stockActual, 0);
       const stockOptimo = productos.filter((p) => p.stockActual > p.stockMinimo).length;
       const stockBajo = productos.filter((p) => p.stockActual > 0 && p.stockActual <= p.stockMinimo).length;
       const sinStock = productos.filter((p) => p.stockActual === 0).length;
-      setStats({ total, valorTotal, stockOptimo, stockBajo, sinStock });
+
+      // Valor total previo (hace 7 dias) basado en movimientos
+      const ahora = Date.now();
+      const hace7dias = ahora - 7 * 24 * 60 * 60 * 1000;
+      const movsSemana = await dbMovimientos.listar({ desde: hace7dias, limite: 9999 });
+      const movsArr = movsSemana.items;
+      // Calcular valor previo: valorTotalactual +/- movimientos de la semana
+      let deltaValor = 0;
+      for (const m of movsArr) {
+        const p = productos.find(x => x.id === m.productoId);
+        const precio = p?.precioVenta ?? 0;
+        if (m.tipo === 'entrada') deltaValor += precio * m.cantidad;
+        else if (m.tipo === 'salida') deltaValor -= precio * m.cantidad;
+        // ajuste/conteo: diferencia entre stockDespues y stockAntes
+        else deltaValor += precio * (m.stockDespues - m.stockAntes);
+      }
+      const valorTotalPrev = Math.max(0, valorTotal - deltaValor);
+      const valorPct = valorTotalPrev > 0
+        ? ((valorTotal - valorTotalPrev) / valorTotalPrev) * 100
+        : (valorTotal > 0 ? 100 : 0);
+
+      // Top categorias desde productos reales
+      const catMap = new Map<string, number>();
+      for (const p of productos) {
+        const cat = p.categoria || 'Sin categoría';
+        catMap.set(cat, (catMap.get(cat) || 0) + 1);
+      }
+      const catsData = [...catMap.entries()]
+        .map(([nombre, valor]) => ({ nombre, valor }))
+        .sort((a, b) => b.valor - a.valor)
+        .slice(0, 6);
+
+      // Tendencia 7 días: entradas y salidas por día
+      const dias = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+      const labels: string[] = [];
+      const entradas: number[] = [];
+      const salidas: number[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const inicio = ahora - (i + 1) * 24 * 60 * 60 * 1000;
+        const fin = ahora - i * 24 * 60 * 60 * 1000;
+        const dia = new Date(fin);
+        labels.push(dias[dia.getDay()]);
+        const movsDia = movsArr.filter(m => m.createdAt >= inicio && m.createdAt < fin);
+        entradas.push(movsDia.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.cantidad, 0));
+        salidas.push(movsDia.filter(m => m.tipo === 'salida').reduce((s, m) => s + m.cantidad, 0));
+      }
+
+      setStats({
+        total, valorTotal, valorTotalPrev, valorPct,
+        stockOptimo, stockBajo, sinStock,
+        catsData, TrendData: { labels, entradas, salidas },
+      });
       setCargando(false);
     };
     cargar();
   }, []);
 
+  // Renderizar gráficos
   useEffect(() => {
-    if (cargando || charted.current) return;
+    if (cargando) return;
     if (!donutRef.current || !barsRef.current || !lineRef.current) return;
 
-    const loadCharts = async () => {
+    const renderCharts = async () => {
       const Chart = (await import('chart.js/auto')).default;
       const cs = getComputedStyle(document.documentElement);
       const C = (n: string) => cs.getPropertyValue(n).trim();
       const grid = 'oklch(38% 0.03 262 / .3)';
-      const tick = C('--text-faint');
+      const ticks = C('--text-faint');
 
       Chart.defaults.font.family = 'Inter';
-      Chart.defaults.color = tick;
+      Chart.defaults.color = ticks;
 
-      new Chart(donutRef.current!, {
+      // Destruir gráficos anteriores
+      chartsRef.current.forEach(c => c?.destroy?.());
+      chartsRef.current = [];
+
+      // Donut: estado del stock
+      chartsRef.current.push(new Chart(donutRef.current!, {
         type: 'doughnut',
         data: {
           labels: ['Óptimo', 'Bajo', 'Sin stock'],
@@ -58,14 +131,16 @@ export default function Historial() {
           responsive: true,
           maintainAspectRatio: false,
         },
-      });
+      }));
 
-      new Chart(barsRef.current!, {
+      // Bars: top categorías (datos reales)
+      const catsConData = stats.catsData.length > 0 ? stats.catsData : [{ nombre: 'Sin datos', valor: 0 }];
+      chartsRef.current.push(new Chart(barsRef.current!, {
         type: 'bar',
         data: {
-          labels: ['Electrónica', 'Herramientas', 'Accesorios', 'Repuestos'],
+          labels: catsConData.map(c => c.nombre),
           datasets: [{
-            data: [450, 320, 210, 150],
+            data: catsConData.map(c => c.valor),
             backgroundColor: C('--primary'),
             borderRadius: 6,
             barThickness: 26,
@@ -77,19 +152,20 @@ export default function Historial() {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { grid: { color: grid }, ticks: { color: tick } },
+            x: { grid: { color: grid }, ticks: { color: ticks, precision: 0 } },
             y: { grid: { display: false }, ticks: { color: C('--text-dim'), font: { weight: 'bold' as const } } },
           },
         },
-      });
+      }));
 
-      new Chart(lineRef.current!, {
+      // Line: tendencia 7 días (datos reales)
+      chartsRef.current.push(new Chart(lineRef.current!, {
         type: 'line',
         data: {
-          labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+          labels: stats.TrendData.labels,
           datasets: [
-            { label: 'Entradas', data: [20, 40, 30, 70, 60, 90, 80], borderColor: C('--primary'), tension: 0.4, pointRadius: 0, borderWidth: 2.5 },
-            { label: 'Salidas', data: [10, 15, 50, 35, 25, 40, 45], borderColor: C('--warn'), borderDash: [5, 4], tension: 0.4, pointRadius: 0, borderWidth: 2 },
+            { label: 'Entradas', data: stats.TrendData.entradas, borderColor: C('--primary'), tension: 0.4, pointRadius: 0, borderWidth: 2.5, fill: false },
+            { label: 'Salidas', data: stats.TrendData.salidas, borderColor: C('--warn'), borderDash: [5, 4], tension: 0.4, pointRadius: 0, borderWidth: 2, fill: false },
           ],
         },
         options: {
@@ -99,17 +175,22 @@ export default function Historial() {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { grid: { display: false }, ticks: { color: tick } },
-            y: { grid: { color: grid }, ticks: { color: tick } },
+            x: { grid: { display: false }, ticks: { color: ticks } },
+            y: { grid: { color: grid }, ticks: { color: ticks, precision: 0 } },
           },
         },
-      });
-
-      charted.current = true;
+      }));
     };
 
-    loadCharts();
+    renderCharts();
+    return () => {
+      chartsRef.current.forEach(c => c?.destroy?.());
+      chartsRef.current = [];
+    };
   }, [cargando, stats]);
+
+  const pctColor = stats.valorPct > 0 ? 'var(--ok)' : stats.valorPct < 0 ? 'var(--danger)' : 'var(--text-faint)';
+  const pctSign = stats.valorPct > 0 ? '+' : '';
 
   return (
     <div className="screen active">
@@ -122,9 +203,16 @@ export default function Historial() {
         <div className="metric hl">
           <div className="m-top">
             <span className="m-label">Valor total</span>
-            <span className="m-chip">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-              2.4%
+            <span className="m-chip" style={{ color: pctColor }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {stats.valorPct >= 0 ? (
+                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+                ) : (
+                  <polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/>
+                )}
+                <polyline points={stats.valorPct >= 0 ? "16 7 22 7 22 13" : "16 17 22 17 22 11"} />
+              </svg>
+              {pctSign}{stats.valorPct.toFixed(1)}%
             </span>
           </div>
           <div className="m-val">{formatMoney(stats.valorTotal)}</div>
