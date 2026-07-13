@@ -105,7 +105,6 @@ function ScannerInner() {
   return (
     <div className="screen active" style={{ padding: 0, gap: 0 }}>
       <div className={`scanner-overlay${activo ? ' active' : ''}`}>
-        <div className="scan-cam" />
         <div className="scan-ui">
           {/* Top bar */}
           <div className="scan-top">
