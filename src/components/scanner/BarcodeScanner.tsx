@@ -61,13 +61,24 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         try { readerRef.current.reset?.(); } catch {}
         readerRef.current = null;
       }
+      // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => { t.enabled = false; });
+      }
       if (mountedRef.current) {
         setCameraState('idle');
       }
     }, []);
 
     const apagarCamaraCompleto = useCallback(() => {
-      pausarDecodificacion();
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+      if (readerRef.current) {
+        try { readerRef.current.reset?.(); } catch {}
+        readerRef.current = null;
+      }
       matarStream(streamRef.current);
       streamRef.current = null;
       if (videoRef.current) {
@@ -79,25 +90,25 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (mountedRef.current) {
         setCameraState('idle');
       }
-    }, [pausarDecodificacion]);
+    }, []);
 
     const inicializar = useCallback(async () => {
       if (!mountedRef.current) return;
       if (cameraState === 'active') return;
+
+      // Reusar stream existente (iOS no pide permiso de nuevo)
       if (streamRef.current) {
+        const stream = streamRef.current;
+        stream.getTracks().forEach(t => { t.enabled = true; });
+        if (videoRef.current && videoRef.current.srcObject !== stream) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
         await reanudarDecodificacion();
         return;
       }
 
-      // Delay iOS SOLO en reinicios (no en primera apertura)
-      if (!primeraAperturaRef.current && esIOS()) {
-        await new Promise((r) => setTimeout(r, 300));
-        if (!mountedRef.current) return;
-      }
-      primeraAperturaRef.current = false;
-
       try {
-        // Paralelo: ZXing + getUserMedia
         const [zxingBrowser, zxingLib, stream] = await Promise.all([
           import('@zxing/browser'),
           import('@zxing/library'),
@@ -150,7 +161,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           return;
         }
 
-setCameraState('active');
+        setCameraState('active');
         onReady?.();
 
         const reader = new BrowserMultiFormatReader(hints);
@@ -195,6 +206,9 @@ setCameraState('active');
       if (!mountedRef.current) return;
       if (!streamRef.current || !videoRef.current) return;
       if (controlsRef.current) return;
+
+      // Reactivar tracks pausadas
+      streamRef.current.getTracks().forEach(t => { t.enabled = true; });
 
       try {
         const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
@@ -269,16 +283,18 @@ setCameraState('active');
     useEffect(() => {
       const handler = () => {
         if (document.hidden) {
+          // Background: pausar tracks sin matar stream (iOS no pide permiso al volver)
           pausarDecodificacion();
-        } else if (activo && cameraState === 'idle') {
+        } else if (activo && streamRef.current) {
+          // Foreground: reusar stream existente
           setTimeout(() => {
             if (mountedRef.current && activo) inicializar();
-          }, 500);
+          }, 300);
         }
       };
       document.addEventListener('visibilitychange', handler);
       return () => document.removeEventListener('visibilitychange', handler);
-    }, [activo, cameraState, pausarDecodificacion, inicializar]);
+    }, [activo, pausarDecodificacion, inicializar]);
 
     useEffect(() => {
       if (cameraState === 'active' && onReady) {

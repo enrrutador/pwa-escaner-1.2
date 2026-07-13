@@ -27,12 +27,9 @@ function ScannerInner() {
     const cleanup = () => {
       scannerRef.current?.apagarCamara();
     };
-    window.addEventListener('beforeunload', cleanup);
-    window.addEventListener('popstate', cleanup);
+    // Solo apagar al cerrar la página del escáner (unmount), no en popstate
     return () => {
       cleanup();
-      window.removeEventListener('beforeunload', cleanup);
-      window.removeEventListener('popstate', cleanup);
     };
   }, []);
 
@@ -55,7 +52,6 @@ function ScannerInner() {
           productoId: producto.id, nombreProducto: producto.nombre,
           imagen: producto.imagen ?? null,
         });
-        scannerRef.current?.apagarCamara();
         router.push(`/producto/${producto.id}/editar`);
         return;
       }
@@ -74,13 +70,11 @@ function ScannerInner() {
           cod: codigo, nom: p.nombre || '', img: p.imagen || '',
           des: p.descripcion || '', pre: String(p.precio || ''), mar: p.marca || '',
         });
-        scannerRef.current?.apagarCamara();
         router.push(`/inventario/nuevo?${params.toString()}`);
       } else {
         await dbEscaneos.registrar({
           codigo, origen: 'camara', resultado: 'no_encontrado',
         });
-        scannerRef.current?.apagarCamara();
         router.push(`/inventario/nuevo?cod=${encodeURIComponent(codigo)}`);
       }
     } catch (e: any) {
@@ -92,12 +86,10 @@ function ScannerInner() {
   }, [buscando, router, mostrarToast]);
 
   const volver = () => {
-    scannerRef.current?.apagarCamara();
     router.back();
   };
 
   const irAManual = () => {
-    scannerRef.current?.apagarCamara();
     setActivo(false);
     router.push('/inventario/nuevo');
   };
