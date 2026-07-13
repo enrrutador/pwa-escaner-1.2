@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.23.0",
     "chart.js": "^4.5.1",
@@ -16,6 +18,7 @@
     "next": "14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "three": "^0.185.1",
     "xlsx": "^0.18.5",
     "zustand": "^4.5.4"
   },

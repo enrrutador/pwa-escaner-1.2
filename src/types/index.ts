@@ -56,8 +56,23 @@ export interface Ubicacion {
 
 export interface UbicacionLayout {
   version: number;
-  shapes: LayoutShape[];
+  shapes: LayoutShape[]; // Legacy 2D shapes (no se usan más pero se mantienen)
+  objects3D?: Object3D[]; // Objetos 3D del mapa
   background?: string; // color o imagen base64
+}
+
+export interface Object3D {
+  id: string;
+  type: 'estante' | 'gondola' | 'mesa' | 'caja' | 'barra' | 'nevera' | 'otro';
+  x: number; // posición en el plano X
+  z: number; // posición en el plano Z
+  rotation: number; // rotación en Y (radians)
+  width: number; // ancho (X)
+  depth: number; // profundidad (Z)
+  height: number; // alto (Y)
+  color: string; // color del mesh
+  label?: string; // etiqueta opcional (ej: "Estante A")
+  productId?: string; // si tiene un producto asignado
 }
 
 export interface LayoutShape {

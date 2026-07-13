@@ -542,3 +542,26 @@ input[type="file"] { display: none; }
 .icon-btn:hover { background: var(--surface-highest); color: var(--text); }
 .icon-btn:active { transform: scale(.9); }
 .icon-btn.disabled { opacity: .4; pointer-events: none; }
+.icon-btn.danger { color: var(--danger); }
+.icon-btn.danger:hover { background: oklch(72% 0.14 25 / .16); color: var(--danger); }
+
+.tree-toggle {
+  width: 20px; height: 20px;
+  border: none; background: transparent; cursor: pointer;
+  display: grid; place-items: center;
+  color: var(--text-faint); font-size: 12px;
+  flex-shrink: 0;
+}
+.tree-spacer { width: 20px; height: 20px; flex-shrink: 0; }
+.tree-name {
+  font-size: 14px; font-weight: 500; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-count {
+  font-size: 10px; padding: 2px 6px;
+  border-radius: var(--r-full);
+  background: oklch(62% 0.17 258 / .18);
+  color: var(--primary); font-weight: 700;
+  flex-shrink: 0;
+}
+.tree-actions { display: flex; gap: 4px; flex-shrink: 0; }
