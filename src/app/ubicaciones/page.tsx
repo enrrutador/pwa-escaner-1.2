@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
@@ -9,10 +8,8 @@ import { useUIStore } from '@/store/uiStore';
 import { dbUbicaciones } from '@/lib/db-ubicaciones';
 import { dbProductos } from '@/lib/db-productos';
 import { formatMoney } from '@/lib/utils';
-import { uid } from '@/lib/utils';
-import type { Ubicacion, TipoUbicacion, Object3D as Object3DType, Producto } from '@/types';
-
-const Scene3D = dynamic(() => import('@/components/ubicaciones/Scene3D'), { ssr: false });
+import type { Ubicacion, TipoUbicacion, Producto } from '@/types';
+import { uid, now } from '@/lib/utils';
 
 const TIPOS_SALON: { value: TipoUbicacion; label: string }[] = [
   { value: 'sucursal', label: 'Sucursal' },
@@ -75,14 +72,17 @@ function UbicacionTree({
           onClick={() => onSelect(u.id)}
         >
           {hasChildren && (
-            <button onClick={e => {
-              e.stopPropagation();
-              setExpanded(prev => {
-                const n = new Set(prev);
-                isExpanded ? n.delete(u.id) : n.add(u.id);
-                return n;
-              });
-            }} className="tree-toggle">
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                setExpanded(prev => {
+                  const n = new Set(prev);
+                  isExpanded ? n.delete(u.id) : n.add(u.id);
+                  return n;
+                });
+              }}
+              className="tree-toggle"
+            >
               {isExpanded ? '▾' : '▸'}
             </button>
           )}
@@ -93,19 +93,26 @@ function UbicacionTree({
           ) : null}
           <span className="badge">{u.tipo}</span>
           <div className="tree-actions">
-            <IconBtn onClick={e => {
-              e.stopPropagation();
-              onCreate(u.id, u.tipo === 'sucursal' || u.tipo === 'deposito' ? 'pasillo' : 'posicion');
-            }} title="Añadir hijo">
+            <IconBtn
+              onClick={e => {
+                e.stopPropagation();
+                onCreate(u.id, u.tipo === 'sucursal' || u.tipo === 'deposito' ? 'pasillo' : 'posicion');
+              }}
+              title="Añadir hijo"
+            >
               <span style={{ fontSize: 16 }}>+</span>
             </IconBtn>
             <IconBtn onClick={e => { e.stopPropagation(); onEdit(u); }} title="Editar">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
             </IconBtn>
-            <IconBtn onClick={e => {
-              e.stopPropagation();
-              if (confirm('Eliminar esta ubicación y sus hijos?')) onDelete(u.id);
-            }} title="Eliminar" className="danger">
+            <IconBtn
+              onClick={e => {
+                e.stopPropagation();
+                if (confirm('Eliminar esta ubicación y sus hijos?')) onDelete(u.id);
+              }}
+              title="Eliminar"
+              className="danger"
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </IconBtn>
           </div>
@@ -140,23 +147,15 @@ function UbicacionesInner() {
   const [activeTab, setActiveTab] = useState<'salon' | 'deposito'>('salon');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Ubicacion | null>(null);
-  const [formData, setFormData] = useState({
-    nombre: '',
-    tipo: 'pasillo' as TipoUbicacion,
-    parentId: null as string | null,
-  });
+  const [formData, setFormData] = useState({ nombre: '', tipo: 'pasillo' as TipoUbicacion, parentId: null as string | null });
   const [filterTipo, setFilterTipo] = useState<TipoUbicacion[]>([]);
   const [productCounts, setProductCounts] = useState<Record<string, number>>({});
   const [selectedProducts, setSelectedProducts] = useState<Producto[]>([]);
-  const [selected3DId, setSelected3DId] = useState<string | null>(null);
-  const [objects3D, setObjects3D] = useState<Object3DType[]>([]);
 
-  // Load ubicaciones
   useEffect(() => {
     dbUbicaciones.listar().then(setUbicaciones);
   }, []);
 
-  // Load product counts per ubicacion
   useEffect(() => {
     if (ubicaciones.length === 0) return;
     const loadCounts = async () => {
@@ -172,7 +171,6 @@ function UbicacionesInner() {
     loadCounts();
   }, [ubicaciones]);
 
-  // Auto-select from ?ubicacion= param
   useEffect(() => {
     const ubId = searchParams.get('ubicacion');
     if (ubId && ubicaciones.length > 0) {
@@ -185,57 +183,10 @@ function UbicacionesInner() {
     }
   }, [searchParams, ubicaciones]);
 
-  // Load 3D objects when selecting ubicacion
   useEffect(() => {
-    if (!selectedId) {
-      setObjects3D([]);
-      setSelectedProducts([]);
-      return;
-    }
-    const u = ubicaciones.find(x => x.id === selectedId);
-    if (u) {
-      setObjects3D(u.layout?.objects3D || []);
-    } else {
-      setObjects3D([]);
-    }
+    if (!selectedId) { setSelectedProducts([]); return; }
     dbProductos.obtenerPorUbicacion(selectedId).then(setSelectedProducts);
-  }, [selectedId, ubicaciones]);
-
-  // Persist 3D objects on change
-  const handleObjectsChange = async (objs: Object3DType[]) => {
-    setObjects3D(objs);
-    if (!selectedId) return;
-    const u = ubicaciones.find(x => x.id === selectedId);
-    if (!u) return;
-    const newLayout = {
-      version: (u.layout?.version || 0) + 1,
-      shapes: u.layout?.shapes || [],
-      objects3D: objs,
-    };
-    await dbUbicaciones.actualizar(selectedId, { layout: newLayout });
-    setUbicaciones(prev => prev.map(x =>
-      x.id === selectedId ? { ...x, layout: newLayout } : x
-    ));
-  };
-
-  // Build product data per 3D object
-  const getProductDataFor3D = (): Record<string, { id: string; nombre: string; color?: string }[]> => {
-    const data: Record<string, { id: string; nombre: string; color?: string }[]> = {};
-    selectedProducts.forEach(p => {
-      // Buscar el object3D que referencia este producto
-      objects3D.forEach(obj => {
-        if (obj.productId === p.id) {
-          if (!data[obj.id]) data[obj.id] = [];
-          data[obj.id].push({
-            id: p.id,
-            nombre: p.nombre,
-            color: '#7a9abb',
-          });
-        }
-      });
-    });
-    return data;
-  };
+  }, [selectedId]);
 
   const selectedUbicacion = ubicaciones.find(u => u.id === selectedId);
 
@@ -259,34 +210,20 @@ function UbicacionesInner() {
   };
 
   const handleSaveModal = async () => {
-    if (!formData.nombre.trim()) {
-      mostrarToast('error', 'El nombre es obligatorio');
-      return;
-    }
+    if (!formData.nombre.trim()) { mostrarToast('error', 'El nombre es obligatorio'); return; }
     try {
       if (editing) {
-        await dbUbicaciones.actualizar(editing.id, {
-          nombre: formData.nombre,
-          tipo: formData.tipo,
-          parentId: formData.parentId,
-        });
-        setUbicaciones(prev => prev.map(u =>
-          u.id === editing.id ? { ...u, ...formData } : u
-        ));
+        await dbUbicaciones.actualizar(editing.id, { nombre: formData.nombre, tipo: formData.tipo, parentId: formData.parentId });
+        setUbicaciones(prev => prev.map(u => u.id === editing.id ? { ...u, ...formData } : u));
         mostrarToast('exito', 'Ubicación actualizada');
       } else {
-        const nueva = await dbUbicaciones.crear({
-          ...formData,
-          activo: true,
-        });
+        const nueva = await dbUbicaciones.crear({ ...formData, activo: true });
         setUbicaciones(prev => [...prev, nueva]);
         setSelectedId(nueva.id);
         mostrarToast('exito', 'Ubicación creada');
       }
       setModalOpen(false);
-    } catch (e: any) {
-      mostrarToast('error', e.message);
-    }
+    } catch (e: any) { mostrarToast('error', e.message); }
   };
 
   const currentTipos = activeTab === 'salon' ? TIPOS_SALON : TIPOS_DEPOSITO;
@@ -295,47 +232,27 @@ function UbicacionesInner() {
     <div className="screen active">
       <div>
         <p className="eyebrow">Ubicaciones</p>
-        <h1 className="h-page">Plano 3D</h1>
+        <h1 className="h-page">Árbol de ubicaciones</h1>
       </div>
 
       <div className="tabs" style={{ marginBottom: 16 }}>
-        <button
-          className={`tab${activeTab === 'salon' ? ' active' : ''}`}
-          onClick={() => setActiveTab('salon')}
-        >
-          <span style={{ fontSize: 18 }}>🏪</span> Salón
-        </button>
-        <button
-          className={`tab${activeTab === 'deposito' ? ' active' : ''}`}
-          onClick={() => setActiveTab('deposito')}
-        >
-          <span style={{ fontSize: 18 }}>🏭</span> Depósito
-        </button>
+        <button className={`tab${activeTab === 'salon' ? ' active' : ''}`} onClick={() => setActiveTab('salon')}>🏪 Salón</button>
+        <button className={`tab${activeTab === 'deposito' ? ' active' : ''}`} onClick={() => setActiveTab('deposito')}>🏭 Depósito</button>
       </div>
 
-      <div className="ubi-layout">
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, height: 'calc(100vh - 180px)', minHeight: 500 }}>
         {/* Sidebar - Tree */}
         <div className="panel" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--line-soft)' }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <button
-                className="btn-primary"
-                style={{ flex: 1, fontSize: 13 }}
-                onClick={() => handleCreate(null, activeTab === 'salon' ? 'sucursal' : 'deposito')}
-              >
+              <button className="btn-primary" style={{ flex: 1, fontSize: 13 }} onClick={() => handleCreate(null, activeTab === 'salon' ? 'sucursal' : 'deposito')}>
                 + Nueva {activeTab === 'salon' ? 'Sucursal' : 'Depósito'}
               </button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {currentTipos.map(t => (
                 <label key={t.value} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={filterTipo.includes(t.value)}
-                    onChange={e => setFilterTipo(prev =>
-                      e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value)
-                    )}
-                  />
+                  <input type="checkbox" checked={filterTipo.includes(t.value)} onChange={e => setFilterTipo(prev => e.target.checked ? [...prev, t.value] : prev.filter(x => x !== t.value))} />
                   {t.label}
                 </label>
               ))}
@@ -355,133 +272,60 @@ function UbicacionesInner() {
           </div>
         </div>
 
-        {/* Main - 3D View or Products */}
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: 0 }}>
+        {/* Main - Detail */}
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {selectedUbicacion ? (
             <>
-              {/* Header */}
-              <div style={{
-                padding: '10px 16px',
-                borderBottom: '1px solid var(--line-soft)',
-                background: 'var(--surface-highest)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{selectedUbicacion.nombre}</h2>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h2 style={{ fontSize: 1.1, fontWeight: 700 }}>{selectedUbicacion.nombre}</h2>
                   <span className="badge">{selectedUbicacion.tipo}</span>
-                  {selectedProducts.length > 0 && (
-                    <span style={{ fontSize: '.8rem', color: 'var(--primary)', fontWeight: 600 }}>
-                      {selectedProducts.length} prods
-                    </span>
-                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <IconBtn onClick={() => handleEdit(selectedUbicacion)} title="Editar info">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
                   </IconBtn>
                   <IconBtn onClick={() => handleCreate(selectedUbicacion.id, selectedUbicacion.tipo === 'sucursal' || selectedUbicacion.tipo === 'deposito' ? 'pasillo' : 'posicion')} title="Añadir hijo">
                     <span style={{ fontSize: 16 }}>+</span>
                   </IconBtn>
                 </div>
               </div>
-
-              {/* 3D Canvas */}
-              <div style={{ flex: 1, minHeight: 500 }}>
-                <Scene3D
-                  objects={objects3D}
-                  onObjectsChange={handleObjectsChange}
-                  selectedId={selected3DId}
-                  onSelectId={setSelected3DId}
-                  productData={getProductDataFor3D()}
-                />
+              <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+                {selectedProducts.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+                      {selectedProducts.length} producto{selectedProducts.length !== 1 ? 's' : ''} en esta ubicación
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {selectedProducts.map(p => (
+                        <Link key={p.id} href={`/producto/${p.id}/editar`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-high)', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', textDecoration: 'none', color: 'var(--text)', transition: 'background .15s' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 'var(--r-lg)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</div>
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-faint)' }}>PLU: {p.plu || '—'} · Stock: {p.stockActual}</div>
+                          </div>
+                          <span style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--cyan)' }}>{formatMoney(p.precioVenta)}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty" style={{ flex: 1 }}>
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-faint)', opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+                    <p>Sin productos asignados</p>
+                    <p style={{ fontSize: '.85rem', color: 'var(--text-faint)', marginTop: 4 }}>Los productos se asignan desde su ficha o creación</p>
+                  </div>
+                )}
               </div>
-
-              {/* Productos */}
-              {selectedProducts.length > 0 && (
-                <div style={{
-                  borderTop: '1px solid var(--line-soft)',
-                  padding: 12,
-                  maxHeight: 180,
-                  overflow: 'auto',
-                }}>
-                  <div style={{
-                    fontSize: '.78rem',
-                    fontWeight: 600,
-                    color: 'var(--text-faint)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '.06em',
-                    marginBottom: 8,
-                  }}>
-                    Productos en {selectedUbicacion.nombre}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {selectedProducts.map(p => (
-                      <Link key={p.id} href={`/producto/${p.id}/editar`} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '8px 10px',
-                        background: 'var(--surface-high)',
-                        borderRadius: 'var(--r-lg)',
-                        border: '1px solid var(--line-soft)',
-                        textDecoration: 'none',
-                        color: 'var(--text)',
-                        transition: 'background .15s',
-                      }}>
-                        <div style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 'var(--r-lg)',
-                          background: 'var(--surface)',
-                          display: 'grid',
-                          placeItems: 'center',
-                          flexShrink: 0,
-                          border: '1px solid var(--line-soft)',
-                        }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}>
-                            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
-                          </svg>
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: '.85rem',
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}>
-                            {p.nombre}
-                          </div>
-                          <div style={{ fontSize: '.72rem', color: 'var(--text-faint)' }}>
-                            PLU: {p.plu || '—'} · Stock: {p.stockActual}
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--cyan)' }}>
-                          {formatMoney(p.precioVenta)}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           ) : (
-            <div className="panel" style={{
-              flex: 1,
-              display: 'grid',
-              placeItems: 'center',
-              minHeight: 500,
-            }}>
+            <div className="panel" style={{ flex: 1, display: 'grid', placeItems: 'center', minHeight: 500 }}>
               <div className="empty">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-faint)', opacity: 0.5 }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/>
-                </svg>
-                <p>Seleccioná una ubicación para editar su plano 3D</p>
-                <p style={{ fontSize: '.85rem', color: 'var(--text-faint)', marginTop: 4 }}>
-                  Creá ubicaciones en el panel izquierdo
-                </p>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-faint)', opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+                <p>Seleccioná una ubicación</p>
+                <p style={{ fontSize: '.85rem', color: 'var(--text-faint)', marginTop: 4 }}>Creá ubicaciones en el panel izquierdo</p>
               </div>
             </div>
           )}
@@ -523,7 +367,7 @@ function UbicacionesInner() {
             </div>
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 20px', borderTop: '1px solid var(--line-soft)' }}>
               <button className="btn-ghost" onClick={() => setModalOpen(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSaveModal}>{editing ? 'Guardar' : 'Crear'}</button>
+              <button className="btn-primary" onClick={handleSaveModal}>{editing ? 'Guardar cambios' : 'Crear'}</button>
             </div>
           </div>
         </div>
