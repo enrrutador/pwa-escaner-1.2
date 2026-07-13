@@ -286,11 +286,10 @@ main {
   background: oklch(16% 0.03 262 / .6); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line-soft); }
 .scan-top h1 { font-size: 1.05rem; font-weight: 700; }
 .scan-main { flex: 1; display: grid; place-items: center; position: relative; padding: 20px; }
-.scanner-camera-container { position: absolute; inset: 0; }
+.scanner-camera-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .viewfinder {
   position: relative;
   width: 100%; max-width: 380px; aspect-ratio: 1;
-  margin: auto; /* centrado horizontal + vertical en container absolute inset-0 */
   border-radius: var(--r-xl);
   overflow: hidden;
 }
