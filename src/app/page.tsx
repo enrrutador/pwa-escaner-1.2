@@ -42,8 +42,23 @@ function CheckIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 }
 
-function SearchIcon() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+function SearchIcon({ style }: { style?: React.CSSProperties }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+}
+
+function PulseRing() {
+  return (
+    <span
+      style={{
+        position: 'absolute',
+        inset: -4,
+        borderRadius: '50%',
+        border: '2px solid var(--primary)',
+        animation: 'pulse-ring 2s ease-out infinite',
+        pointerEvents: 'none',
+      }}
+    />
+  );
 }
 
 export default function Dashboard() {
@@ -93,8 +108,34 @@ export default function Dashboard() {
     const timeout = setTimeout(async () => {
       setBuscando(true);
       try {
+        // 1. Buscar en DB local
         const res = await dbProductos.listar({ busqueda: busqueda.trim(), limite: 20 });
-        setResultados(res.items);
+        
+        if (res.items.length > 0) {
+          setResultados(res.items);
+        } else {
+          // 2. Si no hay resultados, buscar en APIs externas (scraping)
+          const apiRes = await fetch(`/api/buscar?q=${encodeURIComponent(busqueda.trim())}`);
+          const apiData = await apiRes.json();
+          const externos = apiData.resultados || [];
+          
+          // Transformar resultados externos al formato local
+          const transformed = externos.map((p: any) => ({
+            id: `ext-${p.codigo || Date.now()}`,
+            nombre: p.nombre || 'Sin nombre',
+            plu: '',
+            codigoBarras: p.codigo || '',
+            categoria: p.categoria || 'General',
+            marca: p.marca || '',
+            precioVenta: p.precio || 0,
+            stockActual: 0,
+            stockMinimo: 0,
+            imagen: p.imagen || null,
+            _externo: true,
+            _proveedor: p.proveedor,
+          }));
+          setResultados(transformed);
+        }
       } catch (err) {
         console.error('Error buscando:', err);
         setResultados([]);
@@ -191,9 +232,25 @@ export default function Dashboard() {
           className="icon-btn"
           onClick={() => { setBuscadorOpen(true); setBusqueda(''); setResultados([]); }}
           title="Buscar producto por nombre"
-          style={{ width: 40, height: 40 }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 'var(--r-full)',
+            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%)',
+            boxShadow: '0 4px 16px var(--primary)/40, 0 0 0 4px var(--primary)/20',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            overflow: 'visible',
+            transition: 'transform .2s var(--ease), box-shadow .2s var(--ease)',
+            zIndex: 10,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 24px var(--primary)/50, 0 0 0 6px var(--primary)/25'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 16px var(--primary)/40, 0 0 0 4px var(--primary)/20'; }}
         >
-          <SearchIcon />
+          <PulseRing />
+          <SearchIcon style={{ color: 'var(--on-primary)', width: 24, height: 24, zIndex: 1 }} />
         </button>
       </div>
 
@@ -342,45 +399,66 @@ export default function Dashboard() {
                 )}
                 {!buscando && resultados.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {resultados.map((p) => (
-                      <Link
-                        key={p.id}
-                        href={`/producto/${p.id}/editar`}
-                        onClick={() => setBuscadorOpen(false)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '12px 16px',
-                          borderBottom: '1px solid var(--line-soft)',
-                          textDecoration: 'none',
-                          color: 'inherit',
-                          transition: 'background .15s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-high)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        <div style={{ width: 48, height: 48, borderRadius: 'var(--r-lg)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
-                          {p.imagen ? (
-                            <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'var(--r-lg)' }} />
-                          ) : (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-                          )}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '.9rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</div>
-                          <div style={{ fontSize: '.75rem', color: 'var(--text-faint)' }}>
-                            PLU: {p.plu || '—'} · {p.codigoBarras || '—'}
+                    {resultados.map((p) => {
+                      const isExternal = p._externo === true;
+                      const handleClick = () => {
+                        setBuscadorOpen(false);
+                        if (isExternal) {
+                          const params = new URLSearchParams({
+                            nom: p.nombre || '',
+                            cod: p.codigoBarras || '',
+                            img: p.imagen || '',
+                            mar: p.marca || '',
+                            pre: String(p.precioVenta || ''),
+                          });
+                          router.push(`/inventario/nuevo?${params.toString()}`);
+                        }
+                      };
+                      const href = isExternal ? `/inventario/nuevo` : `/producto/${p.id}/editar`;
+                      
+                      return (
+                        <Link
+                          key={p.id}
+                          href={href}
+                          onClick={handleClick}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 16px',
+                            borderBottom: '1px solid var(--line-soft)',
+                            textDecoration: 'none',
+                            color: 'inherit',
+                            transition: 'background .15s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-high)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <div style={{ width: 48, height: 48, borderRadius: 'var(--r-lg)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
+                            {p.imagen ? (
+                              <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'var(--r-lg)' }} />
+                            ) : (
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                            )}
                           </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--cyan)' }}>{formatMoney(p.precioVenta)}</div>
-                          <div style={{ fontSize: '.72rem', color: p.stockActual <= p.stockMinimo ? 'var(--warn)' : 'var(--text-faint)' }}>
-                            {p.stockActual} und
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '.9rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {p.nombre}
+                              {isExternal && <span style={{ marginLeft: 8, fontSize: '.65rem', background: 'var(--primary)', color: 'var(--on-primary)', padding: '2px 6px', borderRadius: 'var(--r-full)', fontWeight: 700 }}>WEB</span>}
+                            </div>
+                            <div style={{ fontSize: '.75rem', color: 'var(--text-faint)' }}>
+                              PLU: {p.plu || '—'} · {p.codigoBarras || '—'}
+                            </div>
                           </div>
-                        </div>
-                      </Link>
-                    ))}
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--cyan)' }}>{formatMoney(p.precioVenta)}</div>
+                            <div style={{ fontSize: '.72rem', color: p.stockActual <= p.stockMinimo ? 'var(--warn)' : 'var(--text-faint)' }}>
+                              {p.stockActual} und
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
                 {!busqueda.trim() && (

@@ -574,3 +574,10 @@ select {
   flex-shrink: 0;
 }
 .tree-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* Pulse ring animation for search button */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 0.2; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
