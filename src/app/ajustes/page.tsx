@@ -27,6 +27,9 @@ function ChevronRight() {
 function PaletteIcon() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="18.5" cy="4.5" r=".5"/><circle cx="21.5" cy="11.5" r=".5"/><circle cx="15.5" cy="14.5" r=".5"/><circle cx="7.5" cy="15.5" r=".5"/><circle cx="3.5" cy="8.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.79-.113 2.6-.32"/></svg>;
 }
+function ChevronDown() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-faint)' }}><path d="m6 9 6 6 6-6"/></svg>;
+}
 
 const FAB_COLORS = [
   { value: 'oklch(62% 0.17 258)', label: 'Naranja' },
@@ -37,6 +40,16 @@ const FAB_COLORS = [
   { value: 'oklch(68% 0.18 320)', label: 'Rosa' },
   { value: 'oklch(62% 0.16 200)', label: 'Cian' },
   { value: 'oklch(72% 0.12 60)', label: 'Dorado' },
+  { value: 'oklch(58% 0.20 340)', label: 'Carmesí' },
+  { value: 'oklch(52% 0.22 290)', label: 'Violeta' },
+  { value: 'oklch(65% 0.15 100)', label: 'Lima' },
+  { value: 'oklch(75% 0.10 70)', label: 'Ámbar' },
+  { value: 'oklch(45% 0.15 250)', label: 'Índigo' },
+  { value: 'oklch(80% 0.08 90)', label: 'Crema' },
+  { value: 'oklch(35% 0.10 220)', label: 'Azul marino' },
+  { value: 'oklch(55% 0.25 20)', label: 'Coral' },
+  { value: 'oklch(70% 0.05 0)', label: 'Gris cálido' },
+  { value: 'oklch(40% 0.05 240)', label: 'Gris azulado' },
 ];
 
 export default function Ajustes() {
@@ -44,6 +57,7 @@ export default function Ajustes() {
   const { fabColor, setFabColor } = useSettingsStore();
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [toggles, setToggles] = useState({ alertas: true, sonido: true, sincro: false });
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
   useEffect(() => {
     dbAlertas.contarNoLeidas().then(setAlertasNoLeidas);
@@ -62,6 +76,17 @@ export default function Ajustes() {
     a.download = `stockmaster-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleColorSelect = (color: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFabColor(color);
+    setColorPickerOpen(false);
+  };
+
+  const toggleColorPicker = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setColorPickerOpen((prev) => !prev);
   };
 
   return (
@@ -103,36 +128,82 @@ export default function Ajustes() {
           </div>
           <ChevronRight />
         </div>
-        <div className="set-row" onClick={() => { }}>
+        <div className="set-row" onClick={toggleColorPicker}>
           <PaletteIcon />
           <div className="s-body">
             <div className="s-name">Color del botón escáner</div>
             <div className="s-sub">Personaliza el color del FAB flotante</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {FAB_COLORS.map((c) => (
-              <button
-                key={c.value}
-                onClick={(e) => { e.stopPropagation(); setFabColor(c.value); }}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  background: c.value,
-                  border: `3px solid ${fabColor === c.value ? 'var(--primary)' : 'transparent'}`,
-                  boxShadow: fabColor === c.value ? '0 0 0 2px var(--bg), 0 0 0 4px var(--primary)' : 'none',
-                  cursor: 'pointer',
-                  transition: 'transform .15s ease, box-shadow .15s ease',
-                }}
-                onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-                onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                title={c.label}
-                aria-label={c.label}
-              />
-            ))}
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 'var(--r-full)',
+                background: fabColor,
+                border: '2px solid var(--line)',
+                boxShadow: '0 0 0 2px var(--bg)',
+              }}
+              aria-hidden="true"
+            />
+            {colorPickerOpen ? <ChevronDown /> : <ChevronRight />}
           </div>
         </div>
+        {colorPickerOpen && (
+          <div className="set-row" style={{ paddingTop: 0, paddingBottom: 8 }}>
+            <div style={{ width: 28 }} />
+            <div className="s-body" style={{ flex: 1, paddingLeft: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10 }}>
+                {FAB_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    onClick={(e) => handleColorSelect(c.value, e)}
+                    style={{
+                      aspectRatio: '1',
+                      borderRadius: 'var(--r-xl)',
+                      background: c.value,
+                      border: `3px solid ${fabColor === c.value ? 'var(--primary)' : 'var(--line)'}`,
+                      boxShadow: fabColor === c.value ? '0 0 0 2px var(--bg), 0 0 0 4px var(--primary)' : 'none',
+                      cursor: 'pointer',
+                      transition: 'transform .15s ease, box-shadow .15s ease, border-color .15s ease',
+                      position: 'relative',
+                    }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    title={c.label}
+                    aria-label={c.label}
+                    aria-pressed={fabColor === c.value}
+                  >
+                    {fabColor === c.value && (
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          color: 'var(--text)',
+                          filter: 'drop-shadow(0 0 2px var(--bg))',
+                        }}
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ width: 28 }} />
+          </div>
+        )}
         <div className="set-row">
           <UserIcon />
           <div className="s-body">
