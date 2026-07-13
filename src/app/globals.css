@@ -495,7 +495,7 @@ input[type="file"] { display: none; }
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 16px;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 180px);
   min-height: 500px;
 }
 @media (max-width: 519px) {
@@ -511,6 +511,21 @@ input[type="file"] { display: none; }
     min-height: 400px;
   }
 }
+@media (min-width: 520px) {
+  .ubi-layout {
+    height: calc(100vh - 200px);
+  }
+}
+
+/* Select styling */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 40px;
+}
 
 /* --- Tree --- */
 .ubicacion-tree { display: flex; flex-direction: column; gap: 2px; }
@@ -518,7 +533,15 @@ input[type="file"] { display: none; }
 .tree-node:hover { background: var(--surface-high); }
 .tree-node.selected { background: oklch(62% 0.17 258 / .16); }
 .badge { background: var(--surface-highest); color: var(--text-faint); padding: 2px 8px; border-radius: var(--r-full); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.icon-btn { border-radius: var(--r-full); display: grid; place-items: center; color: var(--text-dim); transition: background .12s var(--ease), color .12s; border: none; background: transparent; cursor: pointer; }
+.icon-btn {
+  border-radius: var(--r-full);
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  transition: background .12s var(--ease), color .12s;
+  border: none;
+  cursor: pointer;
+}
 .icon-btn:hover { background: var(--surface-highest); color: var(--text); }
 .icon-btn:active { transform: scale(.9); }
 .icon-btn.disabled { opacity: .4; pointer-events: none; }

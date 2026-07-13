@@ -33,7 +33,7 @@ function IconBtn({ onClick, children, title, className = '' }: {
   className?: string;
 }) {
   return (
-    <button className={`icon-btn ${className}`} onClick={onClick} title={title}>
+    <button className={`icon-btn ${className}`} onClick={onClick} title={title} style={{ width: 32, height: 32 }}>
       {children}
     </button>
   );
@@ -71,7 +71,7 @@ function UbicacionTree({
           className={`tree-node${selectedId === u.id ? ' selected' : ''}`}
           onClick={() => onSelect(u.id)}
         >
-          {hasChildren && (
+          {hasChildren ? (
             <button
               onClick={e => {
                 e.stopPropagation();
@@ -85,8 +85,9 @@ function UbicacionTree({
             >
               {isExpanded ? '▾' : '▸'}
             </button>
+          ) : (
+            <span className="tree-spacer" />
           )}
-          {!hasChildren && <span className="tree-spacer" />}
           <span className="tree-name">{u.nombre}</span>
           {productCounts[u.id] ? (
             <span className="tree-count">{productCounts[u.id]}</span>
@@ -100,7 +101,7 @@ function UbicacionTree({
               }}
               title="Añadir hijo"
             >
-              <span style={{ fontSize: 16 }}>+</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </IconBtn>
             <IconBtn onClick={e => { e.stopPropagation(); onEdit(u); }} title="Editar">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
@@ -235,12 +236,16 @@ function UbicacionesInner() {
         <h1 className="h-page">Árbol de ubicaciones</h1>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={`tab${activeTab === 'salon' ? ' active' : ''}`} onClick={() => setActiveTab('salon')}>🏪 Salón</button>
-        <button className={`tab${activeTab === 'deposito' ? ' active' : ''}`} onClick={() => setActiveTab('deposito')}>🏭 Depósito</button>
+      <div className="tabs">
+        <button className={`tab${activeTab === 'salon' ? ' active' : ''}`} onClick={() => setActiveTab('salon')}>
+          🏪 Salón
+        </button>
+        <button className={`tab${activeTab === 'deposito' ? ' active' : ''}`} onClick={() => setActiveTab('deposito')}>
+          🏭 Depósito
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, height: 'calc(100vh - 180px)', minHeight: 500 }}>
+      <div className="ubi-layout">
         {/* Sidebar - Tree */}
         <div className="panel" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--line-soft)' }}>
@@ -357,7 +362,7 @@ function UbicacionesInner() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '.8rem', color: 'var(--text-faint)', marginBottom: 4 }}>Padre (opcional)</label>
-                <select value={formData.parentId || ''} onChange={e => setFormData({ ...formData, parentId: e.target.value || null })} style={{ width: '100%', padding: '12px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line)', background: 'var(--surface)', fontSize: '1rem' }}>
+                <select value={formData.parentId || ''} onChange={e => setFormData({ ...formData, parentId: e.target.value || null })} style={{ width: '100%', padding: '12px 40px 12px 12px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line)', background: 'var(--surface)', fontSize: '1rem' }}>
                   <option value="">— Ninguna (raíz) —</option>
                   {ubicaciones.filter(u => u.tipo !== 'posicion' && u.id !== editing?.id).map(u => (
                     <option key={u.id} value={u.id}>{u.nombre} ({u.tipo})</option>
