@@ -42,6 +42,10 @@ function CheckIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 }
 
+function SearchIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+}
+
 export default function Dashboard() {
   const { usuario, inicializado } = useAuthStore();
   const { mostrarToast } = useUIStore();
@@ -54,6 +58,10 @@ export default function Dashboard() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{ productos: any[]; errors: any[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [buscadorOpen, setBuscadorOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [resultados, setResultados] = useState<any[]>([]);
+  const [buscando, setBuscando] = useState(false);
 
   const abrirEscaneo = async (e: { id: string; codigo: string; productoId?: string | null }) => {
     if (e.productoId) {
@@ -74,6 +82,29 @@ export default function Dashboard() {
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
     dbEscaneos.listar({ limite: 5 }).then((escaneos) => setUltimosEscaneos(escaneos as any)).catch(() => {});
   }, [inicializado]);
+
+  // Búsqueda predictiva con debounce
+  useEffect(() => {
+    if (!buscadorOpen || !busqueda.trim()) {
+      setResultados([]);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const res = await dbProductos.listar({ busqueda: busqueda.trim(), limite: 20 });
+        setResultados(res.items);
+      } catch (err) {
+        console.error('Error buscando:', err);
+        setResultados([]);
+      } finally {
+        setBuscando(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [busqueda, buscadorOpen]);
 
   if (!inicializado) {
     return (
@@ -151,9 +182,19 @@ export default function Dashboard() {
 
   return (
     <div className="screen active">
-      <div>
-        <p className="eyebrow">Panel principal</p>
-        <h1 className="h-page">Buenas, {usuario?.nombre || 'Usuario'}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <p className="eyebrow">Panel principal</p>
+          <h1 className="h-page">Buenas, {usuario?.nombre || 'Usuario'}</h1>
+        </div>
+        <button
+          className="icon-btn"
+          onClick={() => { setBuscadorOpen(true); setBusqueda(''); setResultados([]); }}
+          title="Buscar producto por nombre"
+          style={{ width: 40, height: 40 }}
+        >
+          <SearchIcon />
+        </button>
       </div>
 
       <div className="stat-hero">
@@ -251,6 +292,108 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Buscador Modal */}
+      {buscadorOpen && (
+        <div className="modal-overlay" onClick={() => { setBuscadorOpen(false); setBusqueda(''); setResultados([]); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h2>Buscar producto por nombre</h2>
+              <button className="modal-close" onClick={() => { setBuscadorOpen(false); setBusqueda(''); setResultados([]); }}><XIcon /></button>
+            </div>
+            <div className="modal-body" style={{ padding: 0 }}>
+              <div style={{ padding: 16, borderBottom: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', borderRadius: 'var(--r-lg)', padding: '10px 14px', border: '1px solid var(--line-soft)' }}>
+                  <SearchIcon />
+                  <input
+                    type="text"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Escribí el nombre del producto..."
+                    style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '1rem', color: 'var(--text)' }}
+                    autoFocus
+                  />
+                  {busqueda && (
+                    <button onClick={() => { setBusqueda(''); setResultados([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)' }}>
+                      <XIcon />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                {buscando && (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-faint)' }}>
+                    Buscando...
+                  </div>
+                )}
+                {!buscando && busqueda.trim() && resultados.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center' }}>
+                    <div style={{ color: 'var(--text-faint)', marginBottom: 8 }}>No se encontraron productos</div>
+                    <button
+                      className="btn-primary"
+                      onClick={() => {
+                        setBuscadorOpen(false);
+                        router.push(`/inventario/nuevo?nom=${encodeURIComponent(busqueda.trim())}`);
+                      }}
+                    >
+                      Crear producto "{busqueda.trim()}"
+                    </button>
+                  </div>
+                )}
+                {!buscando && resultados.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {resultados.map((p) => (
+                      <Link
+                        key={p.id}
+                        href={`/producto/${p.id}/editar`}
+                        onClick={() => setBuscadorOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '12px 16px',
+                          borderBottom: '1px solid var(--line-soft)',
+                          textDecoration: 'none',
+                          color: 'inherit',
+                          transition: 'background .15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-high)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <div style={{ width: 48, height: 48, borderRadius: 'var(--r-lg)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
+                          {p.imagen ? (
+                            <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'var(--r-lg)' }} />
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '.9rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</div>
+                          <div style={{ fontSize: '.75rem', color: 'var(--text-faint)' }}>
+                            PLU: {p.plu || '—'} · {p.codigoBarras || '—'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--cyan)' }}>{formatMoney(p.precioVenta)}</div>
+                          <div style={{ fontSize: '.72rem', color: p.stockActual <= p.stockMinimo ? 'var(--warn)' : 'var(--text-faint)' }}>
+                            {p.stockActual} und
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {!busqueda.trim() && (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-faint)' }}>
+                    <SearchIcon />
+                    <p style={{ marginTop: 8, fontSize: '.9rem' }}>Empezá a escribir para buscar productos</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Import Modal */}
       {importModalOpen && (
