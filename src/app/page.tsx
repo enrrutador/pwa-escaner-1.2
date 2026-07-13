@@ -408,8 +408,10 @@ export default function Dashboard() {
                             nom: p.nombre || '',
                             cod: p.codigoBarras || '',
                             img: p.imagen || '',
+                            des: p.descripcion || '',
                             mar: p.marca || '',
                             pre: String(p.precioVenta || ''),
+                            cat: p.categoria || '',
                           });
                           router.push(`/inventario/nuevo?${params.toString()}`);
                         }

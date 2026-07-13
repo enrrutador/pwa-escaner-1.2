@@ -29,6 +29,7 @@ function NuevoProductoInner() {
   const initDesc = searchParams.get('des') || '';
   const initPre = searchParams.get('pre') || '';
   const initMarca = searchParams.get('mar') || '';
+  const initCategoria = searchParams.get('cat') || '';
 
   if (!tienePermiso('productos:crear')) {
     return (
@@ -44,7 +45,7 @@ function NuevoProductoInner() {
     plu: '',
     codigoBarras: initCodigo,
     nombre: initNombre,
-    categoria: 'General',
+    categoria: initCategoria || 'General',
     marca: initMarca,
     precioCompra: 0,
     precioVenta: initPre ? Number(initPre) : 0,
