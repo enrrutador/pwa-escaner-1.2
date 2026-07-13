@@ -618,7 +618,7 @@ function UbicacionesInner() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, height: 'calc(100vh - 200px)', minHeight: 500 }}>
+      <div className="ubi-layout">
         {/* Sidebar - Tree */}
         <div className="panel" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--line-soft)' }}>
@@ -679,9 +679,9 @@ function UbicacionesInner() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {selectedProducts.map(p => (
                       <Link key={p.id} href={`/producto/${p.id}/editar`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--surface-high)', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', textDecoration: 'none', color: 'var(--text)', transition: 'background .15s' }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 'var(--r-md)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 'var(--r-lg)', background: 'var(--surface)', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid var(--line-soft)' }}>
                           {p.imagen ? (
-                            <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'var(--r-md)' }} />
+                            <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'var(--r-lg)' }} />
                           ) : (
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-faint)' }}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
                           )}

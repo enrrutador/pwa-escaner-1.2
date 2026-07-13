@@ -16,7 +16,6 @@ const EXCEL_HEADERS = [
   { key: 'stockActual', label: 'Stock actual' },
   { key: 'stockMinimo', label: 'Stock mínimo' },
   { key: 'ubicacionId', label: 'Ubicación ID' },
-  { key: 'imagen', label: 'Imagen (URL)' },
 ];
 
 export function productosToWorkbook(productos: Producto[]): WorkBook {
@@ -32,7 +31,6 @@ export function productosToWorkbook(productos: Producto[]): WorkBook {
     'Stock actual': p.stockActual,
     'Stock mínimo': p.stockMinimo,
     'Ubicación ID': p.ubicacionId ?? '',
-    'Imagen (URL)': p.imagen ?? '',
   }));
 
   const ws = utils.json_to_sheet(data);
@@ -73,7 +71,6 @@ export function generateTemplateExcel(): void {
     stockActual: 10,
     stockMinimo: 5,
     ubicacionId: null,
-    imagen: '',
     activo: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -145,7 +142,6 @@ export function workbookToProductos(wb: WorkBook): ImportResult {
       stockActual: parseNumber(row['Stock actual']),
       stockMinimo: parseNumber(row['Stock mínimo'], 5),
       ubicacionId: parseString(row['Ubicación ID']) || null,
-      imagen: parseString(row['Imagen (URL)']) || undefined,
       activo: true,
     });
   });
