@@ -6,6 +6,7 @@ import { uid, now } from './utils';
 import type { Movimiento, PaginatedResult, TipoMovimiento } from '@/types';
 import { PAGE_SIZE_DEFAULT } from '@/types';
 import { dbAlertas } from './db-alertas';
+import { eventBus } from './eventBus';
 
 interface ListarArgs {
   pagina?: number;
@@ -54,6 +55,7 @@ export const dbMovimientos = {
   ): Promise<Movimiento> {
     const mov: Movimiento = { id: uid(), createdAt: now(), ...data };
     await db.movimientos.add(mov);
+    eventBus.emit();
     return mov;
   },
 
@@ -102,6 +104,7 @@ export const dbMovimientos = {
       await db.productos.update(productoId, { stockActual: stockDespues, updatedAt: now() });
       await db.movimientos.add(movimiento);
       await dbAlertas.evaluarProducto({ ...p, stockActual: stockDespues });
+      eventBus.emit();
 
       return { stockAntes, stockDespues, movimiento };
     });
@@ -109,5 +112,6 @@ export const dbMovimientos = {
 
   async limpiarTodo(): Promise<void> {
     await db.movimientos.clear();
+    eventBus.emit();
   },
 };

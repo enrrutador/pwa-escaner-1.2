@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { formatMoney } from '@/lib/utils';
 import { dbProductos } from '@/lib/db-productos';
 import { dbMovimientos } from '@/lib/db-movimientos';
+import { eventBus } from '@/lib/eventBus';
 
 interface Stats {
   total: number;
@@ -93,6 +94,10 @@ export default function Historial() {
       setCargando(false);
     };
     cargar();
+
+    // Escuchar cambios en DB para recalcular métricas
+    const unsub = eventBus.on(cargar);
+    return () => unsub();
   }, []);
 
   // Renderizar gráficos

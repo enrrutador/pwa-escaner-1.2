@@ -4,6 +4,7 @@
 import { db } from './db';
 import { uid, now } from './utils';
 import type { Ubicacion, UbicacionConHijos } from '@/types';
+import { eventBus } from './eventBus';
 
 export const dbUbicaciones = {
   listar(): Promise<Ubicacion[]> {
@@ -32,15 +33,18 @@ export const dbUbicaciones = {
       ...data,
     };
     await db.ubicaciones.add(ubicacion);
+    eventBus.emit();
     return ubicacion;
   },
 
   async actualizar(id: string, data: Partial<Ubicacion>): Promise<void> {
     await db.ubicaciones.update(id, data);
+    eventBus.emit();
   },
 
   async eliminar(id: string): Promise<void> {
     await db.ubicaciones.update(id, { activo: false });
+    eventBus.emit();
   },
 
   async construirArbol(): Promise<UbicacionConHijos[]> {
@@ -71,5 +75,6 @@ export const dbUbicaciones = {
 
   async limpiarTodo(): Promise<void> {
     await db.ubicaciones.clear();
+    eventBus.emit();
   },
 };

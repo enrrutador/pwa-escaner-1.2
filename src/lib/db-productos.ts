@@ -6,6 +6,7 @@ import { uid, now } from './utils';
 import type { Producto, PaginatedResult, TipoMovimiento } from '@/types';
 import { PAGE_SIZE_DEFAULT } from '@/types';
 import { dbAlertas } from './db-alertas';
+import { eventBus } from './eventBus';
 
 interface ListarArgs {
   pagina?: number;
@@ -82,6 +83,7 @@ export const dbProductos = {
     };
     await db.productos.add(producto);
     await dbAlertas.evaluarProducto(producto);
+    eventBus.emit();
     return producto;
   },
 
@@ -89,11 +91,13 @@ export const dbProductos = {
     await db.productos.update(id, { ...data, updatedAt: now() });
     const p = await db.productos.get(id);
     if (p) await dbAlertas.evaluarProducto(p);
+    eventBus.emit();
   },
 
   /** Soft delete. */
   async eliminar(id: string): Promise<void> {
     await db.productos.update(id, { activo: false, updatedAt: now() });
+    eventBus.emit();
   },
 
   /**
@@ -133,6 +137,7 @@ export const dbProductos = {
       });
 
       await dbAlertas.evaluarProducto({ ...p, stockActual: stockDespues });
+      eventBus.emit();
       return { stockAntes, stockDespues };
     });
   },
@@ -194,11 +199,13 @@ export const dbProductos = {
     }));
     await db.productos.bulkAdd(rows);
     await dbAlertas.regenerar();
+    eventBus.emit();
     return rows.length;
   },
 
   async limpiarTodo(): Promise<void> {
     await db.productos.clear();
     await dbAlertas.regenerar();
+    eventBus.emit();
   },
 };
