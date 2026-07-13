@@ -121,10 +121,11 @@ export default function Dashboard() {
           
           // Transformar resultados externos al formato local
           const transformed = externos.map((p: any) => ({
-            id: `ext-${p.codigo || Date.now()}`,
+            id: `ext-${p.codigoBarras || Date.now()}`,
             nombre: p.nombre || 'Sin nombre',
+            descripcion: p.descripcion || '',
             plu: '',
-            codigoBarras: p.codigo || '',
+            codigoBarras: p.codigoBarras || '',
             categoria: p.categoria || 'General',
             marca: p.marca || '',
             precioVenta: p.precio || 0,
@@ -132,7 +133,6 @@ export default function Dashboard() {
             stockMinimo: 0,
             imagen: p.imagen || null,
             _externo: true,
-            _proveedor: p.proveedor,
           }));
           setResultados(transformed);
         }
