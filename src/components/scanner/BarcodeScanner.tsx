@@ -13,6 +13,7 @@ export interface BarcodeScannerProps {
   onScan: (codigo: string, formato: string) => void;
   activo: boolean;
   cooldownMs?: number;
+  onReady?: () => void;
 }
 
 export interface BarcodeScannerHandle {
@@ -38,7 +39,7 @@ function esIOS(): boolean {
 }
 
 const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
-  ({ onScan, activo, cooldownMs = 1500 }, ref) => {
+  ({ onScan, activo, cooldownMs = 1500, onReady }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const readerRef = useRef<any>(null);
     const controlsRef = useRef<{ stop: () => void } | null>(null);
@@ -149,7 +150,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           return;
         }
 
-        setCameraState('active');
+setCameraState('active');
+        onReady?.();
 
         const reader = new BrowserMultiFormatReader(hints);
         readerRef.current = reader;
@@ -187,7 +189,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           console.error('[scanner] init error:', err.message);
         }
       }
-    }, [cameraState, cooldownMs, onScan]);
+    }, [cameraState, cooldownMs, onScan, onReady]);
 
     const reanudarDecodificacion = useCallback(async () => {
       if (!mountedRef.current) return;
@@ -239,7 +241,10 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         );
 
         controlsRef.current = controls;
-        if (mountedRef.current) setCameraState('active');
+        if (mountedRef.current) {
+          setCameraState('active');
+          onReady?.();
+        }
       } catch (err) {
         console.error('[scanner] reanudarDecodificacion error:', err);
       }
@@ -274,6 +279,12 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       document.addEventListener('visibilitychange', handler);
       return () => document.removeEventListener('visibilitychange', handler);
     }, [activo, cameraState, pausarDecodificacion, inicializar]);
+
+    useEffect(() => {
+      if (cameraState === 'active' && onReady) {
+        onReady();
+      }
+    }, [cameraState, onReady]);
 
     const alternarTorch = useCallback(async (): Promise<boolean> => {
       const track = streamRef.current?.getVideoTracks()[0];
