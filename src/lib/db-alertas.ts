@@ -82,4 +82,8 @@ export const dbAlertas = {
       return nuevas.length;
     });
   },
+
+  async limpiarTodo(): Promise<void> {
+    await db.alertas.clear();
+  },
 };

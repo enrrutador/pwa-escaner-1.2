@@ -490,6 +490,12 @@ main {
 /* Input file hidden */
 input[type="file"] { display: none; }
 
+/* --- Tabs --- */
+.tabs { display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-xl); padding: 4px; margin-bottom: 16px; }
+.tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: var(--r-lg); font-size: .9rem; font-weight: 600; color: var(--text-dim); transition: all .15s var(--ease); }
+.tab.active { background: var(--primary); color: var(--on-primary); }
+.tab:not(.active):hover { background: var(--surface-high); color: var(--text); }
+
 /* --- Ubicaciones layout --- */
 .ubi-layout {
   display: grid;

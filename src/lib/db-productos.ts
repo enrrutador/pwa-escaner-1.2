@@ -196,4 +196,9 @@ export const dbProductos = {
     await dbAlertas.regenerar();
     return rows.length;
   },
+
+  async limpiarTodo(): Promise<void> {
+    await db.productos.clear();
+    await dbAlertas.regenerar();
+  },
 };

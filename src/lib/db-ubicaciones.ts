@@ -68,4 +68,8 @@ export const dbUbicaciones = {
     }
     return ruta;
   },
+
+  async limpiarTodo(): Promise<void> {
+    await db.ubicaciones.clear();
+  },
 };

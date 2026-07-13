@@ -106,4 +106,8 @@ export const dbMovimientos = {
       return { stockAntes, stockDespues, movimiento };
     });
   },
+
+  async limpiarTodo(): Promise<void> {
+    await db.movimientos.clear();
+  },
 };

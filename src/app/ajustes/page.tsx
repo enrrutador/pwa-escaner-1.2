@@ -5,6 +5,10 @@ import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { dbAlertas } from '@/lib/db-alertas';
 import { dbGlobal } from '@/lib/db-global';
+import { dbProductos } from '@/lib/db-productos';
+import { dbUbicaciones } from '@/lib/db-ubicaciones';
+import { dbMovimientos } from '@/lib/db-movimientos';
+import { useUIStore } from '@/store/uiStore';
 
 function ToggleIcon() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>;
@@ -78,6 +82,19 @@ export default function Ajustes() {
     URL.revokeObjectURL(url);
   };
 
+  const limpiarBaseDatos = async () => {
+    if (!confirm('¿Eliminar TODOS los productos, ubicaciones, alertas, movimientos y escaneos?\nEl usuario admin se mantendrá.')) return;
+    try {
+      await dbProductos.limpiarTodo();
+      await dbUbicaciones.limpiarTodo();
+      await dbMovimientos.limpiarTodo();
+      await dbAlertas.limpiarTodo();
+      alert('Base de datos limpiada');
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+  };
+
   const handleColorSelect = (color: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setFabColor(color);
@@ -127,6 +144,13 @@ export default function Ajustes() {
             <div className="s-sub">Exportar datos (JSON)</div>
           </div>
           <ChevronRight />
+        </div>
+        <div className="set-row" onClick={limpiarBaseDatos} style={{ color: 'var(--danger)' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <div className="s-body">
+            <div className="s-name" style={{ color: 'var(--danger)' }}>Limpiar base de datos</div>
+            <div className="s-sub">Elimina productos, ubicaciones, movimientos, alertas</div>
+          </div>
         </div>
         <div className="set-row" onClick={toggleColorPicker}>
           <PaletteIcon />
