@@ -45,6 +45,37 @@ export interface Ubicacion {
   tipo: TipoUbicacion;
   activo: boolean;
   createdAt: number;
+  // Campos para layout visual (salon/deposito)
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  // Datos del dibujo (JSON con formas, paths, etc.)
+  layout?: UbicacionLayout;
+}
+
+export interface UbicacionLayout {
+  version: number;
+  shapes: LayoutShape[];
+  background?: string; // color o imagen base64
+}
+
+export interface LayoutShape {
+  id: string;
+  type: 'rect' | 'circle' | 'path' | 'text' | 'image';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  radius?: number;
+  points?: number[]; // para path/polígono
+  text?: string;
+  fontSize?: number;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  rotation?: number;
+  data?: Record<string, any>; // datos extra (ej: productoId si marca posición)
 }
 
 export interface UbicacionConHijos extends Ubicacion {

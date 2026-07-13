@@ -5,6 +5,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { dbProductos } from '@/lib/db-productos';
+import { useUbicaciones } from '@/hooks/useUbicaciones';
 import type { Producto } from '@/types';
 
 function stripHtml(html: string): string {
@@ -22,6 +23,7 @@ function EditarProductoInner() {
   const { mostrarToast } = useUIStore();
   const [cargando, setCargando] = useState(false);
   const [producto, setProducto] = useState<Producto | null>(null);
+  const { ubicaciones } = useUbicaciones();
 
   const id = params.id as string;
   const esNuevo = id === 'nuevo';
@@ -210,6 +212,23 @@ function EditarProductoInner() {
           <div className="field">
             <label>Stock mínimo</label>
             <input type="number" value={form.stockMinimo} onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })} />
+          </div>
+          <div className="field full">
+            <label>Ubicación</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="ctrl" style={{ flex: 1 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                <select value={form.ubicacionId || ''} onChange={(e) => setForm({ ...form, ubicacionId: e.target.value || null })}>
+                  <option value="">Sin ubicación</option>
+                  {ubicaciones.filter(u => u.tipo === 'posicion' || u.tipo === 'estante' || u.tipo === 'gondola').map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.tipo})</option>
+                  ))}
+                </select>
+              </div>
+              <a href="/ubicaciones" style={{ fontSize: '.78rem', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }}>
+                Ver plano
+              </a>
+            </div>
           </div>
           <div className="field full" style={{ gap: 10, marginTop: 4 }}>
             <button type="submit" className="btn-primary" disabled={cargando}>

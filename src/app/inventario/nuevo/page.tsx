@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { dbProductos } from '@/lib/db-productos';
+import { useUbicaciones } from '@/hooks/useUbicaciones';
 
 function stripHtml(html: string): string {
   if (!html) return '';
@@ -19,6 +20,7 @@ function NuevoProductoInner() {
   const { tienePermiso } = useAuthStore();
   const { mostrarToast } = useUIStore();
   const [cargando, setCargando] = useState(false);
+  const { ubicaciones } = useUbicaciones();
 
   // Pre-fill from URL params (scraped data)
   const initCodigo = searchParams.get('cod') || '';
@@ -159,6 +161,18 @@ function NuevoProductoInner() {
           <div className="field">
             <label>Stock mínimo</label>
             <input type="number" value={form.stockMinimo} onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })} />
+          </div>
+          <div className="field full">
+            <label>Ubicación</label>
+            <div className="ctrl">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              <select value={form.ubicacionId || ''} onChange={(e) => setForm({ ...form, ubicacionId: e.target.value || null })}>
+                <option value="">Sin ubicación</option>
+                {ubicaciones.filter(u => u.tipo === 'posicion' || u.tipo === 'estante' || u.tipo === 'gondola').map(u => (
+                  <option key={u.id} value={u.id}>{u.nombre} ({u.tipo})</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="field full" style={{ gap: 10, marginTop: 4 }}>
             <button type="submit" className="btn-primary" disabled={cargando}>

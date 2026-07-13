@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
 import { dbProductos } from '@/lib/db-productos';
 import { dbMovimientos } from '@/lib/db-movimientos';
+import { dbUbicaciones } from '@/lib/db-ubicaciones';
 import { useAuthStore } from '@/store/authStore';
 
 export default function ProductoDetalle() {
@@ -15,6 +16,7 @@ export default function ProductoDetalle() {
   const { usuario } = useAuthStore();
   const [producto, setProducto] = useState<any>(null);
   const [movimientos, setMovimientos] = useState<any[]>([]);
+  const [ubicacionNombre, setUbicacionNombre] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -26,6 +28,10 @@ export default function ProductoDetalle() {
       if (!p) { router.push('/inventario'); return; }
       setProducto(p);
       setMovimientos(movs.items);
+      if (p.ubicacionId) {
+        const u = await dbUbicaciones.obtener(p.ubicacionId);
+        setUbicacionNombre(u?.nombre || null);
+      }
       setCargando(false);
     };
     cargar();
@@ -120,7 +126,16 @@ export default function ProductoDetalle() {
         <div className="attr"><span className="k">Precio compra</span><span className="v">{formatMoney(producto.precioCompra)}</span></div>
         <div className="attr"><span className="k">Precio venta</span><span className="v money">{formatMoney(producto.precioVenta)}</span></div>
         <div className="attr"><span className="k">Stock mínimo</span><span className="v warn">{producto.stockMinimo} uds</span></div>
-        <div className="attr"><span className="k">Ubicación</span><span className="v">{producto.ubicacionId || '—'}</span></div>
+        <div className="attr">
+          <span className="k">Ubicación</span>
+          {producto.ubicacionId ? (
+            <Link href={`/ubicaciones?ubicacion=${producto.ubicacionId}`} style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none' }}>
+              {ubicacionNombre || 'Ver en plano'}
+            </Link>
+          ) : (
+            <span className="v">Sin asignar</span>
+          )}
+        </div>
       </div>
 
       <div className="adjust">

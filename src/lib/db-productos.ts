@@ -169,6 +169,20 @@ export const dbProductos = {
     return [...set].sort();
   },
 
+  contarPorUbicacion(ubicacionId: string): Promise<number> {
+    return db.productos
+      .filter((p) => p.activo && p.ubicacionId === ubicacionId)
+      .count();
+  },
+
+  async obtenerPorUbicacion(ubicacionId: string): Promise<Producto[]> {
+    return db.productos
+      .where('ubicacionId')
+      .equals(ubicacionId as any)
+      .filter((p) => p.activo)
+      .sortBy('nombre');
+  },
+
   async bulkCrear(
     productos: Array<Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<number> {
