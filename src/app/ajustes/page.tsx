@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { dbAlertas } from '@/lib/db-alertas';
 import { dbGlobal } from '@/lib/db-global';
 
@@ -23,9 +24,24 @@ function UserIcon() {
 function ChevronRight() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-faint)' }}><path d="m9 18 6-6-6-6"/></svg>;
 }
+function PaletteIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="18.5" cy="4.5" r=".5"/><circle cx="21.5" cy="11.5" r=".5"/><circle cx="15.5" cy="14.5" r=".5"/><circle cx="7.5" cy="15.5" r=".5"/><circle cx="3.5" cy="8.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.79-.113 2.6-.32"/></svg>;
+}
+
+const FAB_COLORS = [
+  { value: 'oklch(62% 0.17 258)', label: 'Naranja' },
+  { value: 'oklch(55% 0.22 270)', label: 'Azul' },
+  { value: 'oklch(60% 0.18 145)', label: 'Verde' },
+  { value: 'oklch(65% 0.20 30)', label: 'Rojo' },
+  { value: 'oklch(70% 0.15 85)', label: 'Amarillo' },
+  { value: 'oklch(68% 0.18 320)', label: 'Rosa' },
+  { value: 'oklch(62% 0.16 200)', label: 'Cian' },
+  { value: 'oklch(72% 0.12 60)', label: 'Dorado' },
+];
 
 export default function Ajustes() {
   const { usuario, logout } = useAuthStore();
+  const { fabColor, setFabColor } = useSettingsStore();
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
   const [toggles, setToggles] = useState({ alertas: true, sonido: true, sincro: false });
 
@@ -86,6 +102,36 @@ export default function Ajustes() {
             <div className="s-sub">Exportar datos (JSON)</div>
           </div>
           <ChevronRight />
+        </div>
+        <div className="set-row" onClick={() => { }}>
+          <PaletteIcon />
+          <div className="s-body">
+            <div className="s-name">Color del botón escáner</div>
+            <div className="s-sub">Personaliza el color del FAB flotante</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {FAB_COLORS.map((c) => (
+              <button
+                key={c.value}
+                onClick={(e) => { e.stopPropagation(); setFabColor(c.value); }}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: c.value,
+                  border: `3px solid ${fabColor === c.value ? 'var(--primary)' : 'transparent'}`,
+                  boxShadow: fabColor === c.value ? '0 0 0 2px var(--bg), 0 0 0 4px var(--primary)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'transform .15s ease, box-shadow .15s ease',
+                }}
+                onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+                onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                title={c.label}
+                aria-label={c.label}
+              />
+            ))}
+          </div>
         </div>
         <div className="set-row">
           <UserIcon />

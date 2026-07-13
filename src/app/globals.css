@@ -377,12 +377,12 @@ main {
 .toggle.on::after { transform: translateX(18px); background: var(--on-primary); }
 
 /* --- FAB --- */
-.fab { position: fixed; right: 20px; bottom: 104px; width: 58px; height: 58px; border-radius: var(--r-full); z-index: 55;
-  background: var(--orange); color: oklch(20% 0.04 55); display: grid; place-items: center; cursor: grab;
-  box-shadow: 0 8px 24px -6px oklch(74% 0.17 55 / .6); animation: pulse 2.4s ease-in-out infinite; touch-action: none; }
+.fab { position: fixed; right: 20px; bottom: 104px; width: 72px; height: 72px; border-radius: var(--r-full); z-index: 55;
+  color: oklch(20% 0.04 55); display: grid; place-items: center; cursor: grab;
+  box-shadow: 0 8px 24px -6px oklch(62% 0.17 258 / .6); animation: pulse 2.4s ease-in-out infinite; touch-action: none; }
 .fab:active { cursor: grabbing; transform: scale(.94); }
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 12px oklch(74% 0.17 55 / .5), 0 8px 24px -6px oklch(74% 0.17 55 / .5); }
-  50% { box-shadow: 0 0 26px oklch(74% 0.17 55 / .85), 0 8px 30px -4px oklch(74% 0.17 55 / .7); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 12px oklch(62% 0.17 258 / .5), 0 8px 24px -6px oklch(62% 0.17 258 / .5); }
+  50% { box-shadow: 0 0 26px oklch(62% 0.17 258 / .85), 0 8px 30px -4px oklch(62% 0.17 258 / .7); } }
 @media (min-width: 520px) { .fab { right: calc(50% - 220px + 20px); } }
 
 /* --- Bottom nav --- */

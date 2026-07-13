@@ -50,7 +50,7 @@ export default function Inventario() {
         </svg>
         <input
           type="text"
-          placeholder="Buscar SKU, nombre, código…"
+          placeholder="Buscar PLU, nombre, código…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
