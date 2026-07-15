@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
 import { useProductos } from '@/hooks/useProductos';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 const CATEGORIAS = ['Todas'];
 
@@ -25,6 +26,8 @@ function debounce<T extends (...args: any[]) => void>(fn: T, ms: number) {
   }) as T;
 }
 
+const ROW_HEIGHT = 92; // altura aprox de cada item
+
 export default function InventarioClient() {
   const searchParams = useSearchParams();
   const [busqueda, setBusqueda] = useState('');
@@ -35,6 +38,8 @@ export default function InventarioClient() {
     busqueda: busquedaDebounced,
     limite: 50,
   });
+
+  const parentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const filter = searchParams.get('filter');
@@ -73,6 +78,14 @@ export default function InventarioClient() {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setBusqueda(e.target.value);
   };
+
+  // Virtualizer
+  const virtualizer = useVirtualizer({
+    count: productosFiltrados.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 5,
+  });
 
   return (
     <div className="screen active">
@@ -136,57 +149,79 @@ export default function InventarioClient() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div
+        ref={parentRef}
+        style={{
+          height: 'calc(100vh - 280px)',
+          overflow: 'auto',
+          contain: 'strict',
+        }}
+      >
         {productosFiltrados.length === 0 && !cargando ? (
-          <div className="empty">
+          <div className="empty" style={{ padding: 40, textAlign: 'center' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="m8 8 6 6"/></svg>
             <p>Sin resultados</p>
           </div>
         ) : (
-          productosFiltrados.map((p) => {
-            const st = getStockStatus(p);
-            return (
-              <Link key={p.id} href={`/producto/${p.id}/editar`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
-                <div className="pimg">
-                  {p.imagen ? (
-                    <img 
-                      src={p.imagen} 
-                      alt="" 
-                      loading="lazy"
-                      width={60}
-                      height={60}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} 
-                    />
-                  ) : (
-                    <ProductIcon />
-                  )}
-                </div>
-                <div className="pbody">
-                  <div className="prow">
-                    <div className="pname">{p.nombre}</div>
-                    <span className={`pill ${st.cls}`}>
-                      {st.cls === 'ok' ? `${p.stockActual} und` : st.label}
-                    </span>
+          <div style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const p = productosFiltrados[virtualRow.index];
+              const st = getStockStatus(p);
+              return (
+                <Link
+                  key={p.id}
+                  href={`/producto/${p.id}/editar`}
+                  className={`product${st.cls === 'out' ? ' out' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: virtualRow.size,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <div className="pimg">
+                    {p.imagen ? (
+                      <img
+                        src={p.imagen}
+                        alt=""
+                        loading="lazy"
+                        width={60}
+                        height={60}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }}
+                      />
+                    ) : (
+                      <ProductIcon />
+                    )}
                   </div>
-                  <div className="pmeta">
-                    PLU: {p.plu || '—'}
-                    <span className="dot" />
-                    {p.codigoBarras || '—'}
-                  </div>
-                  <div className="pstats">
-                    <div>
-                      <div className="k">Cantidad</div>
-                      <div className="v">{p.stockActual} und.</div>
+                  <div className="pbody">
+                    <div className="prow">
+                      <div className="pname">{p.nombre}</div>
+                      <span className={`pill ${st.cls}`}>
+                        {st.cls === 'ok' ? `${p.stockActual} und` : st.label}
+                      </span>
                     </div>
-                    <div>
-                      <div className="k">Precio</div>
-                      <div className="v">{formatMoney(p.precioVenta)}</div>
+                    <div className="pmeta">
+                      PLU: {p.plu || '—'}
+                      <span className="dot" />
+                      {p.codigoBarras || '—'}
+                    </div>
+                    <div className="pstats">
+                      <div>
+                        <div className="k">Cantidad</div>
+                        <div className="v">{p.stockActual} und.</div>
+                      </div>
+                      <div>
+                        <div className="k">Precio</div>
+                        <div className="v">{formatMoney(p.precioVenta)}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            );
-          })
+                </Link>
+              );
+            })}
+          </div>
         )}
       </div>
 
