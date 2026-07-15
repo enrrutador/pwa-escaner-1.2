@@ -1,16 +1,18 @@
-const CACHE_VERSION = 'stockmaster-v2';
-const STATIC_CACHE = 'stockmaster-static-v2';
-const DYNAMIC_CACHE = 'stockmaster-dynamic-v2';
-const IMAGE_CACHE = 'stockmaster-images-v2';
+const CACHE_VERSION = 'stockmaster-v4';
+const STATIC_CACHE = 'stockmaster-static-v4';
+const DYNAMIC_CACHE = 'stockmaster-dynamic-v4';
+const IMAGE_CACHE = 'stockmaster-images-v4';
+const OFFLINE_FALLBACK = '/offline.html';
 
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg',
+  '/offline.html',
 ];
 
-// Install: cache static assets
+// Install: cache static assets + offline fallback
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
@@ -81,12 +83,12 @@ self.addEventListener('fetch', (event) => {
           caches.open(DYNAMIC_CACHE).then((c) => c.put(request, clone));
           return res;
         })
-        .catch(() => caches.match(request).then((r) => r || caches.match('/')))
+        .catch(() => caches.match(request).then((r) => r || caches.match(OFFLINE_FALLBACK)))
     );
     return;
   }
 
-  // Static assets (JS/CSS/fonts): stale-while-revalidate
+  // Static assets (JS/CSS/fonts): stale-while-revalidate with long TTL
   event.respondWith(
     caches.open(STATIC_CACHE).then(async (cache) => {
       const cached = await cache.match(request);
@@ -102,3 +104,15 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Background sync for offline mutations (future enhancement)
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-pending-changes') {
+    event.waitUntil(syncPendingChanges());
+  }
+});
+
+async function syncPendingChanges() {
+  // Placeholder for future offline mutation sync
+  console.log('[SW] Background sync triggered');
+}

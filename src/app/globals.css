@@ -297,16 +297,14 @@ main {
   border-radius: var(--r-xl);
   overflow: hidden;
 }
-.scanner-pulse { animation: scanner-pulse 1.2s ease-in-out infinite; }
-@keyframes scanner-pulse { 0%,100% { opacity: .3; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
+.scanner-pulse { opacity: 0.6; }
 .corner { position: absolute; width: 48px; height: 48px; border: 4px solid var(--primary); }
 .corner.tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: var(--r-xl); }
 .corner.tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: var(--r-xl); }
 .corner.bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: var(--r-xl); }
 .corner.br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: var(--r-xl); }
 .laser { position: absolute; left: 24px; right: 24px; height: 2px; background: var(--primary); border-radius: 2px;
-  box-shadow: 0 0 16px 2px var(--primary); animation: laser 2s var(--ease) infinite; }
-@keyframes laser { 0% { top: 5%; opacity: 0; } 10% { opacity: 1; } 50% { top: 94%; } 90% { opacity: 1; } 100% { top: 5%; opacity: 0; } }
+  box-shadow: 0 0 16px 2px var(--primary); opacity: 0.8; }
 @keyframes flash { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
 .animate-flash { animation: flash 0.3s ease-out; }
 .scan-hint { position: absolute; bottom: 140px; left: 0; right: 0; text-align: center; padding: 0 20px; }

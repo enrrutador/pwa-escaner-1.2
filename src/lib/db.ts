@@ -87,19 +87,6 @@ export class StockMasterDB extends Dexie {
           if (p.plu == null) p.plu = '';
         });
       });
-
-    // Limpieza de PLUs vacíos/nulos al abrir.
-    this.on('ready', async () => {
-      try {
-        await this.productos
-          .filter((p) => p.plu == null)
-          .modify((p) => {
-            p.plu = '';
-          });
-      } catch {
-        /* noop en primer arranque */
-      }
-    });
   }
 }
 
