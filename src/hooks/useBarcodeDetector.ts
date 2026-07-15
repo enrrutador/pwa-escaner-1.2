@@ -53,13 +53,6 @@ const ZXING_FORMAT_MAP: Record<string, string> = {
   itf: 'ITF',
 };
 
-// Detectar modo standalone PWA (Android standalone no expone BarcodeDetector confiablemente)
-const isStandalone = () => {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true;
-};
-
 export function useBarcodeDetector({
   onDetect,
   formats,
@@ -73,16 +66,11 @@ export function useBarcodeDetector({
   const mountedRef = useRef(true);
   const initializingRef = useRef(false);
   const nativeFailedRef = useRef(false);
+  const zxingStartedRef = useRef(false);
+  const prevUseNativeRef = useRef(false);
 
-  // En standalone PWA: forzar ZXing directo (BarcodeDetector no fiable en Android standalone)
-  const forceZXing = isStandalone();
-
-  // Inicializar detector nativo si está disponible Y no estamos en standalone
+  // Inicializar detector nativo si está disponible
   useEffect(() => {
-    if (forceZXing) {
-      setUseNative(false);
-      return;
-    }
     const initNative = async () => {
       if (typeof window === 'undefined') return;
       if (!('BarcodeDetector' in window)) {
@@ -98,11 +86,9 @@ export function useBarcodeDetector({
           setUseNative(false);
           return;
         }
-        // Test rápido: crear detector y probar con canvas vacío para validar que funciona
+        // Test rápido con frame real del video (si ya existe) o canvas vacío
         const testDetector = new window.BarcodeDetector({ formats: available });
-        const testCanvas = document.createElement('canvas');
-        testCanvas.width = 10; testCanvas.height = 10;
-        await testDetector.detect(testCanvas); // si esto falla, nativo no sirve
+        // No usar canvas vacío — ML Kit suele tirar error. Simplemente confiar en getSupportedFormats.
         nativeDetectorRef.current = testDetector;
         setUseNative(true);
       } catch {
@@ -113,16 +99,24 @@ export function useBarcodeDetector({
     return () => { mountedRef.current = false; };
   }, [formats]);
 
-  // Limpiar ZXing reader SIEMPRE que cambie useNative (true<->false)
+  // Cleanup ZXing SOLO al ir true→false (no al revés) + al desmontar
   useEffect(() => {
-    if (zxingControlsRef.current) {
-      try { zxingControlsRef.current.stop(); } catch {}
-      zxingControlsRef.current = null;
-      zxingReaderRef.current = null;
-      initializingRef.current = false;
-    }
+    prevUseNativeRef.current = useNative;
   }, [useNative]);
 
+  useEffect(() => {
+    // Cleanup al desmontar
+    return () => {
+      if (zxingControlsRef.current) {
+        try { zxingControlsRef.current.stop(); } catch {}
+        zxingControlsRef.current = null;
+        zxingReaderRef.current = null;
+        zxingStartedRef.current = false;
+      }
+    };
+  }, []);
+
+  // Detectar con native (throttleado) — ZXing corre su propio loop interno
   const detect = useCallback(async (video: HTMLVideoElement) => {
     if (!mountedRef.current) return;
     if (!video || video.readyState < 2 || video.paused) return;
@@ -131,14 +125,7 @@ export function useBarcodeDetector({
     if (now - lastDetectRef.current < throttleMs) return;
     lastDetectRef.current = now;
 
-    // Si ya falló nativo una vez, no volver a intentar
-    if (nativeFailedRef.current) {
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      detectWithZXing(video);
-      return;
-    }
-
-    if (useNative && nativeDetectorRef.current) {
+    if (useNative && nativeDetectorRef.current && !nativeFailedRef.current) {
       try {
         const results = await nativeDetectorRef.current.detect(video);
         if (results.length > 0) {
@@ -150,79 +137,91 @@ export function useBarcodeDetector({
           })));
         }
       } catch (e) {
-        console.warn('[BarcodeDetector] native detect failed, permanently falling back to ZXing:', e);
+        console.warn('[BarcodeDetector] native detect failed, permanent fallback to ZXing:', e);
         nativeFailedRef.current = true;
         setUseNative(false);
-        // Intentar ZXing en este mismo ciclo
-        detectWithZXing(video);
       }
-    } else {
-      detectWithZXing(video);
     }
   }, [useNative, onDetect, throttleMs]);
 
-  const detectWithZXing = useCallback(async (video: HTMLVideoElement) => {
+  // Iniciar ZXing UNA SOLA VEZ cuando useNative=false y video esté listo
+  const ensureZXing = useCallback(async (video: HTMLVideoElement) => {
+    if (!mountedRef.current) return;
+    if (zxingStartedRef.current) return;
     if (initializingRef.current) return;
-    if (!zxingReaderRef.current) {
-      initializingRef.current = true;
-      try {
-        const [zxingBrowser, zxingLibModule] = await Promise.all([
-          import('@zxing/browser'),
-          import('@zxing/library'),
-        ]);
-        const { BrowserMultiFormatReader } = zxingBrowser;
-        const { DecodeHintType, BarcodeFormat } = zxingLibModule;
+    initializingRef.current = true;
 
-        // Store BarcodeFormat enum for later use in callback
-        (zxingReaderRef.current as any)._barcodeFormat = BarcodeFormat;
+    try {
+      const [zxingBrowser, zxingLibModule] = await Promise.all([
+        import('@zxing/browser'),
+        import('@zxing/library'),
+      ]);
+      const { BrowserMultiFormatReader } = zxingBrowser;
+      const { DecodeHintType, BarcodeFormat } = zxingLibModule;
 
-        const hints = new Map();
-        // Solo 1D + ITF (sin QR)
-        const zxingFormats = FALLBACK_FORMATS
-          .map(f => ZXING_FORMAT_MAP[norm(f)])
-          .filter(Boolean)
-          .map(key => BarcodeFormat[key as keyof typeof BarcodeFormat])
-          .filter(Boolean);
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, zxingFormats);
-        hints.set(DecodeHintType.TRY_HARDER, true);
+      (zxingReaderRef.current as any)._barcodeFormat = BarcodeFormat;
 
-        zxingReaderRef.current = new BrowserMultiFormatReader(hints);
-      } catch (e) {
-        console.error('[BarcodeDetector] ZXing init failed:', e);
-      } finally {
-        initializingRef.current = false;
-      }
-    }
+      const hints = new Map();
+      const zxingFormats = FALLBACK_FORMATS
+        .map(f => ZXING_FORMAT_MAP[norm(f)])
+        .filter(Boolean)
+        .map(key => BarcodeFormat[key as keyof typeof BarcodeFormat])
+        .filter(Boolean);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, zxingFormats);
+      hints.set(DecodeHintType.TRY_HARDER, true);
 
-    if (zxingReaderRef.current && !zxingControlsRef.current) {
-      try {
-        zxingControlsRef.current = await zxingReaderRef.current.decodeFromVideoElement(
-          video,
-          (result: any, _err: any) => {
-            if (!result || !mountedRef.current) return;
-            const codigo = result.getText().trim();
-            const BarcodeFormat = (zxingReaderRef.current as any)._barcodeFormat;
-            const formato = BarcodeFormat?.[result.getBarcodeFormat()] ?? 'UNKNOWN';
-            if (codigo.length >= 4) {
-              onDetect([{
-                rawValue: codigo,
-                format: formato,
-              }]);
-            }
+      zxingReaderRef.current = new BrowserMultiFormatReader(hints);
+
+      // Arrancar loop interno de ZXing (este es el ÚNICO loop para ZXing)
+      zxingControlsRef.current = await zxingReaderRef.current.decodeFromVideoElement(
+        video,
+        (result: any, _err: any) => {
+          if (!result || !mountedRef.current) return;
+          const codigo = result.getText().trim();
+          const BarcodeFormat = (zxingReaderRef.current as any)._barcodeFormat;
+          const formato = BarcodeFormat?.[result.getBarcodeFormat()] ?? 'UNKNOWN';
+          if (codigo.length >= 4) {
+            onDetect([{
+              rawValue: codigo,
+              format: formato,
+            }]);
           }
-        );
-      } catch (e) {
-        console.error('[BarcodeDetector] ZXing decode failed:', e);
-      }
+        }
+      );
+      zxingStartedRef.current = true;
+    } catch (e) {
+      console.error('[BarcodeDetector] ZXing init failed:', e);
+    } finally {
+      initializingRef.current = false;
     }
   }, [onDetect]);
+
+  // Exponer ensureZXing para que el componente lo llame cuando video esté playing
+  // y detener ZXing al ir native→fallback
+  useEffect(() => {
+    if (prevUseNativeRef.current === true && useNative === false) {
+      // Native falló o se desactivó: asegurar ZXing si hay video
+      // El componente llamará ensureZXing cuando tenga video
+    }
+    if (prevUseNativeRef.current === false && useNative === true) {
+      // Native se activó: parar ZXing si estaba corriendo
+      if (zxingControlsRef.current) {
+        try { zxingControlsRef.current.stop(); } catch {}
+        zxingControlsRef.current = null;
+        zxingReaderRef.current = null;
+        zxingStartedRef.current = false;
+      }
+    }
+  }, [useNative]);
 
   const stop = useCallback(() => {
     if (zxingControlsRef.current) {
       try { zxingControlsRef.current.stop(); } catch {}
       zxingControlsRef.current = null;
+      zxingReaderRef.current = null;
+      zxingStartedRef.current = false;
     }
   }, []);
 
-  return { detect, stop, useNative };
+  return { detect, ensureZXing, stop, useNative };
 }

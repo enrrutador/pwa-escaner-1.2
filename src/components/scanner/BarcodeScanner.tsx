@@ -55,13 +55,19 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
     const mountedRef = useRef(true);
     const scanLoopRef = useRef<number | null>(null);
+    const cameraStateRef = useRef<CameraState>('idle');
 
     const [cameraState, setCameraState] = useState<CameraState>('idle');
     const [torchOn, setTorchOn] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
 
+    // Sincronizar ref con state para que el loop no capture stale
+    useEffect(() => {
+      cameraStateRef.current = cameraState;
+    }, [cameraState]);
+
     // Nuevo hook: BarcodeDetector nativo + fallback ZXing
-    const { detect, stop: stopDetector, useNative } = useBarcodeDetector({
+    const { detect, ensureZXing, stop: stopDetector, useNative } = useBarcodeDetector({
       onDetect: useCallback((results) => {
         if (!mountedRef.current) return;
         for (const r of results) {
@@ -118,7 +124,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         await waitForPlaying(videoRef.current);
         setCameraState('active');
         onReady?.();
-        startScanLoop();
         return;
       }
 
@@ -167,7 +172,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
         setCameraState('active');
         onReady?.();
-        startScanLoop();
       } catch (err: any) {
         if (!mountedRef.current) return;
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -196,21 +200,40 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       });
     }, []);
 
+    // Loop de escaneo: detect() para native, ensureZXing() para arrancar ZXing una vez
     const startScanLoop = useCallback(() => {
-      if (scanLoopRef.current) return;
+      // Siempre cancelar loop viejo primero para permitir reinicio cuando useNative cambie
+      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
       const loop = () => {
-        if (!mountedRef.current || cameraState !== 'active' || !videoRef.current) return;
-        detect(videoRef.current);
+        if (!mountedRef.current || cameraStateRef.current !== 'active' || !videoRef.current) return;
+        if (useNative) {
+          detect(videoRef.current);
+        } else {
+          ensureZXing(videoRef.current);
+        }
         scanLoopRef.current = requestAnimationFrame(loop);
       };
       scanLoopRef.current = requestAnimationFrame(loop);
-    }, [cameraState, detect]);
+    }, [detect, ensureZXing, useNative]);
 
-    const pausarDecodificacion = useCallback(() => {
+    const stopScanLoop = useCallback(() => {
       if (scanLoopRef.current) {
         cancelAnimationFrame(scanLoopRef.current);
         scanLoopRef.current = null;
       }
+    }, []);
+
+    // Efecto que arranca/para el loop SOLO cuando cameraState cambia a/from 'active'
+    useEffect(() => {
+      if (cameraState === 'active') {
+        startScanLoop();
+      } else {
+        stopScanLoop();
+      }
+    }, [cameraState, startScanLoop, stopScanLoop]);
+
+    const pausarDecodificacion = useCallback(() => {
+      stopScanLoop();
       stopDetector();
       // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
       if (streamRef.current) {
@@ -219,7 +242,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (mountedRef.current) {
         setCameraState('idle');
       }
-    }, [stopDetector]);
+    }, [stopDetector, stopScanLoop]);
 
     useEffect(() => {
       if (activo) {
