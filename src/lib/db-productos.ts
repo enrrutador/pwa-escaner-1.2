@@ -30,32 +30,35 @@ export const dbProductos = {
     ubicacionId,
     inactivos = false,
   }: ListarArgs = {}): Promise<PaginatedResult<Producto>> {
-    let coll = db.productos.toCollection();
+    const baseQuery = inactivos
+      ? db.productos.where('activo').equals(0)
+      : db.productos.where('activo').equals(1);
 
-    coll = coll.filter((p) => {
-      if (!inactivos && !p.activo) return false;
-      if (inactivos && p.activo) return false;
-      if (categoria && p.categoria !== categoria) return false;
-      if (marca && p.marca !== marca) return false;
-      if (ubicacionId && p.ubicacionId !== ubicacionId) return false;
-      if (soloBajoStock && p.stockActual > p.stockMinimo) return false;
-      if (busqueda) {
-        const q = busqueda.trim().toLowerCase();
-        const hit =
-          p.nombre.toLowerCase().includes(q) ||
-          p.plu.toLowerCase().includes(q) ||
-          p.codigoBarras.toLowerCase().includes(q);
-        if (!hit) return false;
-      }
-      return true;
-    });
+    // Aplicar filtros exactos usando índices
+    let coll: any = baseQuery;
+    if (categoria) coll = coll.filter((p: any) => p.categoria === categoria);
+    if (marca) coll = coll.filter((p: any) => p.marca === marca);
+    if (ubicacionId) coll = coll.filter((p: any) => p.ubicacionId === ubicacionId);
+    if (soloBajoStock) coll = coll.filter((p: any) => p.stockActual > 0 && p.stockActual <= p.stockMinimo);
 
-    const todos = await coll.sortBy('nombre');
-    const total = todos.length;
-    const start = (pagina - 1) * limite;
-    const items = todos.slice(start, start + limite);
+    // Búsqueda por texto: usar índice en nombre para prefijo, luego filtrar resto en memoria
+    if (busqueda) {
+      const q = busqueda.trim().toLowerCase();
+      // Dexie no tiene startsWithIgnoreCase nativo, usamos filter sobre la colección ya reducida
+      coll = coll.filter((p: any) =>
+        p.nombre.toLowerCase().includes(q) ||
+        p.plu.toLowerCase().includes(q) ||
+        p.codigoBarras.toLowerCase().includes(q)
+      );
+    }
 
-    return { items, total, pagina, limite, hasMore: start + limite < total };
+    // Contar total ANTES de paginar (usa count() en el índice)
+    const total = await coll.count();
+
+    // Ordenar por nombre usando el índice y paginar con offset/limit
+    const items = await coll.offset((pagina - 1) * limite).limit(limite).sortBy('nombre');
+
+    return { items, total, pagina, limite, hasMore: (pagina - 1) * limite + items.length < total };
   },
 
   obtener(id: string): Promise<Producto | undefined> {

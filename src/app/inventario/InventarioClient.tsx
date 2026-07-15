@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
@@ -17,13 +17,22 @@ function ProductIcon() {
   );
 }
 
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number) {
+  let timeout: ReturnType<typeof setTimeout>;
+  return ((...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
 export default function InventarioClient() {
   const searchParams = useSearchParams();
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaDebounced, setBusquedaDebounced] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const { productos, total, hasMore, cargando, error, cargarMas } = useProductos({
-    busqueda,
+    busqueda: busquedaDebounced,
     limite: 50,
   });
 
@@ -32,21 +41,38 @@ export default function InventarioClient() {
     if (filter === 'stock-bajo') setStockFilter('low');
   }, [searchParams]);
 
-  const categoriasUnicas = ['Todas', ...new Set(productos.map((p) => p.categoria).filter(Boolean))];
+  // Debounce: actualizar búsqueda debounced 250ms después de dejar de escribir
+  const debouncedSetSearch = useCallback(debounce((val: string) => setBusquedaDebounced(val), 250), []);
+  useEffect(() => {
+    debouncedSetSearch(busqueda);
+  }, [busqueda, debouncedSetSearch]);
+
+  const categoriasUnicas = useMemo(
+    () => ['Todas', ...new Set(productos.map((p) => p.categoria).filter(Boolean))],
+    [productos]
+  );
   const categorias = categoriasUnicas.length > 1 ? categoriasUnicas : CATEGORIAS;
 
-  const productosFiltrados = productos.filter((p) => {
-    if (categoriaActiva !== 'Todas' && p.categoria !== categoriaActiva) return false;
-    if (stockFilter === 'low') return p.stockActual > 0 && p.stockActual <= p.stockMinimo;
-    if (stockFilter === 'out') return p.stockActual === 0;
-    return true;
-  });
+  const productosFiltrados = useMemo(
+    () =>
+      productos.filter((p) => {
+        if (categoriaActiva !== 'Todas' && p.categoria !== categoriaActiva) return false;
+        if (stockFilter === 'low') return p.stockActual > 0 && p.stockActual <= p.stockMinimo;
+        if (stockFilter === 'out') return p.stockActual === 0;
+        return true;
+      }),
+    [productos, categoriaActiva, stockFilter]
+  );
 
   function getStockStatus(p: { stockActual: number; stockMinimo: number }) {
     if (p.stockActual === 0) return { cls: 'out', label: 'Sin stock' };
     if (p.stockActual <= p.stockMinimo) return { cls: 'low', label: 'Stock bajo' };
     return { cls: 'ok', label: `${p.stockActual} ok` };
   }
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBusqueda(e.target.value);
+  };
 
   return (
     <div className="screen active">
@@ -63,7 +89,7 @@ export default function InventarioClient() {
           type="text"
           placeholder="Buscar PLU, nombre, código…"
           value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+          onChange={handleSearchChange}
         />
       </div>
 
@@ -123,7 +149,14 @@ export default function InventarioClient() {
               <Link key={p.id} href={`/producto/${p.id}/editar`} className={`product${st.cls === 'out' ? ' out' : ''}`}>
                 <div className="pimg">
                   {p.imagen ? (
-                    <img src={p.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} />
+                    <img 
+                      src={p.imagen} 
+                      alt="" 
+                      loading="lazy"
+                      width={60}
+                      height={60}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} 
+                    />
                   ) : (
                     <ProductIcon />
                   )}

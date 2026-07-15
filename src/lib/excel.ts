@@ -1,7 +1,6 @@
 // src/lib/excel.ts
-// Utilidades para importar/exportar productos a Excel
+// Utilidades para importar/exportar productos a Excel - SOLO carga xlsx dinámicamente
 
-import { utils, write, read, WorkBook } from 'xlsx';
 import type { Producto } from '@/types';
 
 const EXCEL_HEADERS = [
@@ -18,68 +17,10 @@ const EXCEL_HEADERS = [
   { key: 'ubicacionId', label: 'Ubicación ID' },
 ];
 
-export function productosToWorkbook(productos: Producto[]): WorkBook {
-  const data = productos.map((p) => ({
-    PLU: p.plu,
-    'Código de barras (EAN)': p.codigoBarras,
-    'Nombre*': p.nombre,
-    Descripción: p.descripcion ?? '',
-    Categoría: p.categoria,
-    Marca: p.marca,
-    'Precio compra': p.precioCompra,
-    'Precio venta*': p.precioVenta,
-    'Stock actual': p.stockActual,
-    'Stock mínimo': p.stockMinimo,
-    'Ubicación ID': p.ubicacionId ?? '',
-  }));
-
-  const ws = utils.json_to_sheet(data);
-  const wb = utils.book_new();
-  utils.book_append_sheet(wb, ws, 'Productos');
-  return wb;
+async function getXLSX() {
+  const mod = await import('xlsx');
+  return { utils: mod.utils, write: mod.write, read: mod.read };
 }
-
-export function downloadWorkbook(wb: WorkBook, filename: string): void {
-  const wbout = write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export function exportProductosToExcel(productos: Producto[]): void {
-  const wb = productosToWorkbook(productos);
-  const fecha = new Date().toISOString().slice(0, 10);
-  downloadWorkbook(wb, `stockmaster-productos-${fecha}.xlsx`);
-}
-
-export function generateTemplateExcel(): void {
-  // Plantilla con una fila de ejemplo
-  const ejemplo: Producto = {
-    id: '',
-    plu: '1001',
-    codigoBarras: '7790070012345',
-    nombre: 'Producto ejemplo',
-    descripcion: 'Descripción opcional',
-    categoria: 'General',
-    marca: 'Marca ejemplo',
-    precioCompra: 100.5,
-    precioVenta: 150.75,
-    stockActual: 10,
-    stockMinimo: 5,
-    ubicacionId: null,
-    activo: true,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-  const wb = productosToWorkbook([ejemplo]);
-  downloadWorkbook(wb, 'plantilla-importacion-productos.xlsx');
-}
-
-type RowData = Record<string, string | number>;
 
 function parseNumber(val: unknown, defaultVal = 0): number {
   if (val === null || val === undefined || val === '') return defaultVal;
@@ -97,18 +38,19 @@ export interface ImportResult {
   errors: { row: number; message: string }[];
 }
 
-export function workbookToProductos(wb: WorkBook): ImportResult {
+function workbookToProductos(wb: any): ImportResult {
+  const utils = (wb as any).utils;
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return { productos: [], errors: [{ row: 0, message: 'Hoja vacía' }] };
 
   const ws = wb.Sheets[sheetName];
-  const rows = utils.sheet_to_json<RowData>(ws, { defval: '' });
+  const rows = (utils as any).sheet_to_json(ws, { defval: '' });
 
   const productos: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>[] = [];
   const errors: { row: number; message: string }[] = [];
 
-  rows.forEach((row, idx) => {
-    const rowNum = idx + 2; // +2 porque 1=header, 0-indexed
+  rows.forEach((row: Record<string, string | number>, idx: number) => {
+    const rowNum = idx + 2;
 
     const nombre = parseString(row['Nombre*'] ?? row['Nombre']);
     if (!nombre) {
@@ -149,13 +91,14 @@ export function workbookToProductos(wb: WorkBook): ImportResult {
   return { productos, errors };
 }
 
-export function importProductosFromFile(file: File): Promise<ImportResult> {
+export async function importProductosFromFile(file: File): Promise<ImportResult> {
+  const xlsx = await getXLSX();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = read(data, { type: 'array' });
+        const wb = xlsx.read(data, { type: 'array' });
         resolve(workbookToProductos(wb));
       } catch (err) {
         reject(err);
@@ -164,4 +107,81 @@ export function importProductosFromFile(file: File): Promise<ImportResult> {
     reader.onerror = () => reject(new Error('Error leyendo archivo'));
     reader.readAsArrayBuffer(file);
   });
+}
+
+export async function exportProductosToExcel(productos: Producto[]): Promise<void> {
+  const xlsx = await getXLSX();
+  const data = productos.map((p) => ({
+    PLU: p.plu,
+    'Código de barras (EAN)': p.codigoBarras,
+    'Nombre*': p.nombre,
+    Descripción: p.descripcion ?? '',
+    Categoría: p.categoria,
+    Marca: p.marca,
+    'Precio compra': p.precioCompra,
+    'Precio venta*': p.precioVenta,
+    'Stock actual': p.stockActual,
+    'Stock mínimo': p.stockMinimo,
+    'Ubicación ID': p.ubicacionId ?? '',
+  }));
+
+  const ws = xlsx.utils.json_to_sheet(data);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, ws, 'Productos');
+
+  const wbout = xlsx.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `stockmaster-productos-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function generateTemplateExcel(): Promise<void> {
+  const xlsx = await getXLSX();
+  const ejemplo: Producto = {
+    id: '',
+    plu: '1001',
+    codigoBarras: '7790070012345',
+    nombre: 'Producto ejemplo',
+    descripcion: 'Descripción opcional',
+    categoria: 'General',
+    marca: 'Marca ejemplo',
+    precioCompra: 100.5,
+    precioVenta: 150.75,
+    stockActual: 10,
+    stockMinimo: 5,
+    ubicacionId: null,
+    activo: true,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  const data = [{
+    PLU: ejemplo.plu,
+    'Código de barras (EAN)': ejemplo.codigoBarras,
+    'Nombre*': ejemplo.nombre,
+    Descripción: ejemplo.descripcion ?? '',
+    Categoría: ejemplo.categoria,
+    Marca: ejemplo.marca,
+    'Precio compra': ejemplo.precioCompra,
+    'Precio venta*': ejemplo.precioVenta,
+    'Stock actual': ejemplo.stockActual,
+    'Stock mínimo': ejemplo.stockMinimo,
+    'Ubicación ID': ejemplo.ubicacionId ?? '',
+  }];
+
+  const ws = xlsx.utils.json_to_sheet(data);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, ws, 'Productos');
+
+  const wbout = xlsx.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla-importacion-productos.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
 }

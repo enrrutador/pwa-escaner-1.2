@@ -96,8 +96,7 @@ input, select, textarea { font-family: inherit; }
   display: flex; align-items: center; justify-content: space-between;
   height: 56px; padding: 0 16px;
   padding-top: max(0px, env(safe-area-inset-top));
-  background: oklch(18% 0.03 262 / .82);
-  backdrop-filter: blur(16px);
+  background: oklch(18% 0.03 262 / .95);
   border-bottom: 1px solid var(--line-soft);
 }
 .topbar .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: -.02em; font-size: 1.15rem; }
@@ -288,7 +287,7 @@ main {
 .scanner-overlay.active { display: flex; }
 .scan-ui { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; }
 .scan-top { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; height: 56px;
-  background: oklch(16% 0.03 262 / .6); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line-soft); }
+  background: oklch(16% 0.03 262 / .85); border-bottom: 1px solid var(--line-soft); }
 .scan-top h1 { font-size: 1.05rem; font-weight: 700; }
 .scan-main { flex: 1; display: grid; place-items: center; position: relative; padding: 20px; }
 .scanner-camera-container { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: oklch(12% 0.02 262); }
@@ -312,7 +311,7 @@ main {
 .animate-flash { animation: flash 0.3s ease-out; }
 .scan-hint { position: absolute; bottom: 140px; left: 0; right: 0; text-align: center; padding: 0 20px; }
 .scan-hint span { display: inline-block; font-size: .85rem; color: var(--text-dim); padding: 10px 20px; border-radius: var(--r-full);
-  background: oklch(31% 0.04 262 / .85); backdrop-filter: blur(10px); border: 1px solid var(--line-soft); }
+  background: oklch(31% 0.04 262 / .9); border: 1px solid var(--line-soft); }
 .scan-foot { padding: 24px 16px 36px; display: flex; flex-direction: column; align-items: center; gap: 20px;
   background: linear-gradient(to top, oklch(12% 0.02 262), transparent); }
 .flash { width: 68px; height: 68px; border-radius: var(--r-full); background: var(--surface); border: 1px solid var(--line);

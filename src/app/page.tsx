@@ -11,7 +11,6 @@ import { dbEscaneos } from '@/lib/db-escaneos';
 import { dbProductos } from '@/lib/db-productos';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
-import { exportProductosToExcel, generateTemplateExcel, importProductosFromFile } from '@/lib/excel';
 
 function StatIcon() {
   return (
@@ -171,13 +170,15 @@ export default function Dashboard() {
   const sinStock = productos.filter((p) => p.stockActual === 0).length;
   const enStock = totalProductos - sinStock;
 
-  const handleExport = () => {
-    exportProductosToExcel(productos);
+  const handleExport = async () => {
+    const { exportProductosToExcel } = await import('@/lib/excel');
+    await exportProductosToExcel(productos);
     mostrarToast('exito', 'Exportación completada');
   };
 
-  const handleTemplate = () => {
-    generateTemplateExcel();
+  const handleTemplate = async () => {
+    const { generateTemplateExcel } = await import('@/lib/excel');
+    await generateTemplateExcel();
     mostrarToast('info', 'Plantilla descargada');
   };
 
@@ -195,6 +196,7 @@ export default function Dashboard() {
 
   const previewImport = async (file: File) => {
     try {
+      const { importProductosFromFile } = await import('@/lib/excel');
       const result = await importProductosFromFile(file);
       setImportPreview(result);
     } catch (err: any) {
@@ -332,7 +334,14 @@ export default function Dashboard() {
               >
                 <div className="thumb">
                   {e.imagen ? (
-                    <img src={e.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} />
+                    <img 
+                      src={e.imagen} 
+                      alt="" 
+                      loading="lazy"
+                      width={50}
+                      height={50}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff', borderRadius: 'var(--r-lg)' }} 
+                    />
                   ) : (
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect width="10" height="10" x="7" y="7" rx="1"/></svg>
                   )}
