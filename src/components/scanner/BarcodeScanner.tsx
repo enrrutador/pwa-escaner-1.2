@@ -8,7 +8,6 @@ import {
   forwardRef,
   useCallback,
 } from 'react';
-import { useBarcodeDetector } from '@/hooks/useBarcodeDetector';
 
 export interface BarcodeScannerProps {
   onScan: (codigo: string, formato: string) => void;
@@ -39,62 +38,46 @@ function esIOS(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-function esGamaBaja(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return (
-    (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
-    ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 3) ||
-    /Android.*(?:SM-A|SM-J|SM-K|LM-[XQGK]|K40)/i.test(navigator.userAgent)
-  );
-}
-
 const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
   ({ onScan, activo, cooldownMs = 1500, onReady }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const readerRef = useRef<any>(null);
+    const controlsRef = useRef<{ stop: () => void } | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
     const mountedRef = useRef(true);
-    const scanLoopRef = useRef<number | null>(null);
-    const cameraStateRef = useRef<CameraState>('idle');
+    const primeraAperturaRef = useRef(true);
 
     const [cameraState, setCameraState] = useState<CameraState>('idle');
     const [torchOn, setTorchOn] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
 
-    // Sincronizar ref con state para que el loop no capture stale
-    useEffect(() => {
-      cameraStateRef.current = cameraState;
-    }, [cameraState]);
-
-    // Nuevo hook: BarcodeDetector nativo + fallback ZXing
-    const { detect, ensureZXing, stop: stopDetector, useNative } = useBarcodeDetector({
-      onDetect: useCallback((results) => {
-        if (!mountedRef.current) return;
-        for (const r of results) {
-          const codigo = r.rawValue?.trim();
-          const formato = r.format;
-          if (!codigo || codigo.length < 4) continue;
-
-          const ahora = Date.now();
-          if (
-            codigo === lastScanRef.current.code &&
-            ahora - lastScanRef.current.time < cooldownMs
-          ) continue;
-
-          lastScanRef.current = { code: codigo, time: ahora };
-          if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
-          onScan(codigo, formato);
-          break; // solo el primero
-        }
-      }, [cooldownMs, onScan]),
-      throttleMs: 150, // ~6-7 fps max, ahorra CPU en gama baja
-    });
+    const pausarDecodificacion = useCallback(() => {
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+      if (readerRef.current) {
+        try { readerRef.current.reset?.(); } catch {}
+        readerRef.current = null;
+      }
+      // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => { t.enabled = false; });
+      }
+      if (mountedRef.current) {
+        setCameraState('idle');
+      }
+    }, []);
 
     const apagarCamaraCompleto = useCallback(() => {
-      stopDetector();
-      if (scanLoopRef.current) {
-        cancelAnimationFrame(scanLoopRef.current);
-        scanLoopRef.current = null;
+      if (controlsRef.current) {
+        try { controlsRef.current.stop(); } catch {}
+        controlsRef.current = null;
+      }
+      if (readerRef.current) {
+        try { readerRef.current.reset?.(); } catch {}
+        readerRef.current = null;
       }
       matarStream(streamRef.current);
       streamRef.current = null;
@@ -107,7 +90,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (mountedRef.current) {
         setCameraState('idle');
       }
-    }, [stopDetector]);
+    }, []);
 
     const inicializar = useCallback(async () => {
       if (!mountedRef.current) return;
@@ -121,40 +104,46 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
         }
-        await waitForPlaying(videoRef.current);
-        setCameraState('active');
-        onReady?.();
+        await reanudarDecodificacion();
         return;
       }
 
-      // Resoluciones: 1280x720 en gama baja = ~5px/módulo EAN-13 a 30cm (mínimo robusto)
-      const videoConstraints: any = esGamaBaja()
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 960 }, height: { ideal: 720, min: 540 }, focusMode: 'continuous' }
-        : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } };
-
-      if (esIOS()) {
-        videoConstraints.frameRate = { ideal: 24, max: 30 };
-      }
-
       try {
-        // Iniciar getUserMedia inmediatamente (es lo que tarda 3s en gama baja)
-        const stream = await navigator.mediaDevices?.getUserMedia({
-          video: videoConstraints,
-          audio: false,
-        });
+        const [zxingBrowser, zxingLib, stream] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+          navigator.mediaDevices?.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+              ...(esIOS() ? { frameRate: { ideal: 24, max: 30 } } : {}),
+            },
+            audio: false,
+          }),
+        ]);
 
         if (!mountedRef.current) {
           matarStream(stream);
           return;
         }
 
-        streamRef.current = stream;
+        const { BrowserMultiFormatReader } = zxingBrowser;
+        const { DecodeHintType, BarcodeFormat } = zxingLib;
 
-        // Signal visual inmediato: mostrar video apenas llegue el stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.QR_CODE,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        streamRef.current = stream;
 
         const track = stream.getVideoTracks()[0];
         if (track) {
@@ -162,16 +151,46 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           setTorchAvailable(!!caps?.torch);
         }
 
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+
         if (!mountedRef.current) {
           matarStream(stream);
           return;
         }
 
-        // Esperar a que el video esté REPRODUCIENDO antes de iniciar decode loop
-        await waitForPlaying(videoRef.current);
-
         setCameraState('active');
         onReady?.();
+
+        const reader = new BrowserMultiFormatReader(hints);
+        readerRef.current = reader;
+
+        const controls = await reader.decodeFromVideoElement(
+          videoRef.current!,
+          (result: any, _err: any, _ctrl: any) => {
+            if (!result || !mountedRef.current) return;
+
+            const codigo = result.getText().trim();
+            const formato = BarcodeFormat[result.getBarcodeFormat()] ?? 'UNKNOWN';
+            const ahora = Date.now();
+
+            if (
+              codigo === lastScanRef.current.code &&
+              ahora - lastScanRef.current.time < cooldownMs
+            ) return;
+
+            if (codigo.length < 4) return;
+
+            lastScanRef.current = { code: codigo, time: ahora };
+            if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+
+            onScan(codigo, formato);
+          }
+        );
+
+        controlsRef.current = controls;
       } catch (err: any) {
         if (!mountedRef.current) return;
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -181,68 +200,69 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           console.error('[scanner] init error:', err.message);
         }
       }
-    }, [cameraState, onReady]);
+    }, [cameraState, cooldownMs, onScan, onReady]);
 
-    // Espera a que video.play() resuelva y haya frames fluyendo
-    const waitForPlaying = useCallback(async (video: HTMLVideoElement | null) => {
-      if (!video) return;
-      // Si ya está playing, ok
-      if (!video.paused && video.readyState >= 2) return;
-      // Esperar evento 'playing' o timeout 3s
-      await new Promise<void>(resolve => {
-        const timeout = setTimeout(resolve, 3000);
-        const onPlaying = () => {
-          video.removeEventListener('playing', onPlaying);
-          clearTimeout(timeout);
-          resolve();
-        };
-        video.addEventListener('playing', onPlaying, { once: true });
-      });
-    }, []);
+    const reanudarDecodificacion = useCallback(async () => {
+      if (!mountedRef.current) return;
+      if (!streamRef.current || !videoRef.current) return;
+      if (controlsRef.current) return;
 
-    // Loop de escaneo: detect() para native, ensureZXing() para arrancar ZXing una vez
-    const startScanLoop = useCallback(() => {
-      // Siempre cancelar loop viejo primero para permitir reinicio cuando useNative cambie
-      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
-      const loop = () => {
-        if (!mountedRef.current || cameraStateRef.current !== 'active' || !videoRef.current) return;
-        if (useNative) {
-          detect(videoRef.current);
-        } else {
-          ensureZXing(videoRef.current);
+      // Reactivar tracks pausadas
+      streamRef.current.getTracks().forEach(t => { t.enabled = true; });
+
+      try {
+        const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+        ]);
+
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.QR_CODE,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const reader = new BrowserMultiFormatReader(hints);
+        readerRef.current = reader;
+
+        const controls = await reader.decodeFromVideoElement(
+          videoRef.current,
+          (result: any, _err: any, _ctrl: any) => {
+            if (!result || !mountedRef.current) return;
+
+            const codigo = result.getText().trim();
+            const formato = BarcodeFormat[result.getBarcodeFormat()] ?? 'UNKNOWN';
+            const ahora = Date.now();
+
+            if (
+              codigo === lastScanRef.current.code &&
+              ahora - lastScanRef.current.time < cooldownMs
+            ) return;
+
+            if (codigo.length < 4) return;
+
+            lastScanRef.current = { code: codigo, time: ahora };
+            if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+
+            onScan(codigo, formato);
+          }
+        );
+
+        controlsRef.current = controls;
+        if (mountedRef.current) {
+          setCameraState('active');
+          onReady?.();
         }
-        scanLoopRef.current = requestAnimationFrame(loop);
-      };
-      scanLoopRef.current = requestAnimationFrame(loop);
-    }, [detect, ensureZXing, useNative]);
-
-    const stopScanLoop = useCallback(() => {
-      if (scanLoopRef.current) {
-        cancelAnimationFrame(scanLoopRef.current);
-        scanLoopRef.current = null;
+      } catch (err) {
+        console.error('[scanner] reanudarDecodificacion error:', err);
       }
-    }, []);
-
-    // Efecto que arranca/para el loop SOLO cuando cameraState cambia a/from 'active'
-    useEffect(() => {
-      if (cameraState === 'active') {
-        startScanLoop();
-      } else {
-        stopScanLoop();
-      }
-    }, [cameraState, startScanLoop, stopScanLoop]);
-
-    const pausarDecodificacion = useCallback(() => {
-      stopScanLoop();
-      stopDetector();
-      // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => { t.enabled = false; });
-      }
-      if (mountedRef.current) {
-        setCameraState('idle');
-      }
-    }, [stopDetector, stopScanLoop]);
+    }, [cooldownMs, onScan]);
 
     useEffect(() => {
       if (activo) {
@@ -263,8 +283,10 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     useEffect(() => {
       const handler = () => {
         if (document.hidden) {
+          // Background: pausar tracks sin matar stream (iOS no pide permiso al volver)
           pausarDecodificacion();
         } else if (activo && streamRef.current) {
+          // Foreground: reusar stream existente
           setTimeout(() => {
             if (mountedRef.current && activo) inicializar();
           }, 300);
