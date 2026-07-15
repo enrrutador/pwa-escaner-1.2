@@ -115,15 +115,16 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
         }
+        await waitForPlaying(videoRef.current);
         setCameraState('active');
         onReady?.();
         startScanLoop();
         return;
       }
 
-      // Resoluciones según gama: menor = apertura más rápida + decodificación más ágil
+      // Resoluciones: 1280x720 en gama baja = ~5px/módulo EAN-13 a 30cm (mínimo robusto)
       const videoConstraints: any = esGamaBaja()
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 960 }, height: { ideal: 720, min: 540 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } };
 
       if (esIOS()) {
@@ -147,7 +148,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         // Signal visual inmediato: mostrar video apenas llegue el stream
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
+          await videoRef.current.play().catch(() => {});
         }
 
         const track = stream.getVideoTracks()[0];
@@ -160,6 +161,9 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           matarStream(stream);
           return;
         }
+
+        // Esperar a que el video esté REPRODUCIENDO antes de iniciar decode loop
+        await waitForPlaying(videoRef.current);
 
         setCameraState('active');
         onReady?.();
@@ -174,6 +178,23 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         }
       }
     }, [cameraState, onReady]);
+
+    // Espera a que video.play() resuelva y haya frames fluyendo
+    const waitForPlaying = useCallback(async (video: HTMLVideoElement | null) => {
+      if (!video) return;
+      // Si ya está playing, ok
+      if (!video.paused && video.readyState >= 2) return;
+      // Esperar evento 'playing' o timeout 3s
+      await new Promise<void>(resolve => {
+        const timeout = setTimeout(resolve, 3000);
+        const onPlaying = () => {
+          video.removeEventListener('playing', onPlaying);
+          clearTimeout(timeout);
+          resolve();
+        };
+        video.addEventListener('playing', onPlaying, { once: true });
+      });
+    }, []);
 
     const startScanLoop = useCallback(() => {
       if (scanLoopRef.current) return;

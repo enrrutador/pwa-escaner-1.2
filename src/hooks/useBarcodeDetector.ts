@@ -34,14 +34,29 @@ interface UseBarcodeDetectorOptions {
   throttleMs?: number;
 }
 
+// Normaliza formato: 'EAN_13' | 'ean_13' | 'EAN13' -> 'ean13'
+const norm = (f: string) => f.toLowerCase().replace(/_/g, '');
+
+// Formatos 1D + ITF (sin QR — más ligero en fallback ZXing)
 const FALLBACK_FORMATS = [
-  'ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39', 'qr_code'
+  'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'
 ];
+
+// Mapeo formato normalizado -> ZXing BarcodeFormat enum key
+const ZXING_FORMAT_MAP: Record<string, string> = {
+  ean13: 'EAN_13',
+  ean8: 'EAN_8',
+  upca: 'UPC_A',
+  upce: 'UPC_E',
+  code128: 'CODE_128',
+  code39: 'CODE_39',
+  itf: 'ITF',
+};
 
 export function useBarcodeDetector({
   onDetect,
   formats,
-  throttleMs = 200,
+  throttleMs = 150,
 }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const lastDetectRef = useRef(0);
@@ -49,6 +64,7 @@ export function useBarcodeDetector({
   const zxingReaderRef = useRef<any>(null);
   const zxingControlsRef = useRef<{ stop: () => void } | null>(null);
   const mountedRef = useRef(true);
+  const initializingRef = useRef(false);
 
   // Inicializar detector nativo si está disponible
   useEffect(() => {
@@ -61,7 +77,8 @@ export function useBarcodeDetector({
       try {
         const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
         const targetFormats = formats || FALLBACK_FORMATS;
-        const available = targetFormats.filter(f => supportedFormats.includes(f));
+        const supportedNorm = new Set(supportedFormats.map(norm));
+        const available = targetFormats.filter(f => supportedNorm.has(norm(f)));
         if (available.length === 0) {
           setUseNative(false);
           return;
@@ -76,18 +93,19 @@ export function useBarcodeDetector({
     return () => { mountedRef.current = false; };
   }, [formats]);
 
-  // Limpiar ZXing reader si cambia a nativo
+  // Limpiar ZXing reader SIEMPRE que cambie useNative (true<->false)
   useEffect(() => {
-    if (useNative && zxingControlsRef.current) {
+    if (zxingControlsRef.current) {
       try { zxingControlsRef.current.stop(); } catch {}
       zxingControlsRef.current = null;
       zxingReaderRef.current = null;
+      initializingRef.current = false;
     }
   }, [useNative]);
 
   const detect = useCallback(async (video: HTMLVideoElement) => {
     if (!mountedRef.current) return;
-    if (!video || video.readyState < 2) return;
+    if (!video || video.readyState < 2 || video.paused) return;
 
     const now = Date.now();
     if (now - lastDetectRef.current < throttleMs) return;
@@ -109,8 +127,10 @@ export function useBarcodeDetector({
         setUseNative(false);
       }
     } else {
-      // Fallback ZXing - lazy init
+      // Fallback ZXing - lazy init con guard anti-race
+      if (initializingRef.current) return;
       if (!zxingReaderRef.current) {
+        initializingRef.current = true;
         try {
           const [zxingBrowser, zxingLibModule] = await Promise.all([
             import('@zxing/browser'),
@@ -123,21 +143,20 @@ export function useBarcodeDetector({
           (zxingReaderRef.current as any)._barcodeFormat = BarcodeFormat;
 
           const hints = new Map();
-          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-            BarcodeFormat.EAN_13,
-            BarcodeFormat.EAN_8,
-            BarcodeFormat.UPC_A,
-            BarcodeFormat.UPC_E,
-            BarcodeFormat.CODE_128,
-            BarcodeFormat.CODE_39,
-            BarcodeFormat.QR_CODE,
-          ]);
+          // Solo 1D + ITF (sin QR)
+          const zxingFormats = FALLBACK_FORMATS
+            .map(f => ZXING_FORMAT_MAP[norm(f)])
+            .filter(Boolean)
+            .map(key => BarcodeFormat[key as keyof typeof BarcodeFormat])
+            .filter(Boolean);
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, zxingFormats);
           hints.set(DecodeHintType.TRY_HARDER, true);
 
           zxingReaderRef.current = new BrowserMultiFormatReader(hints);
         } catch (e) {
           console.error('[BarcodeDetector] ZXing init failed:', e);
-          return;
+        } finally {
+          initializingRef.current = false;
         }
       }
 
