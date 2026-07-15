@@ -30,35 +30,35 @@ export const dbProductos = {
     ubicacionId,
     inactivos = false,
   }: ListarArgs = {}): Promise<PaginatedResult<Producto>> {
-    const baseQuery = inactivos
-      ? db.productos.where('activo').equals(0)
-      : db.productos.where('activo').equals(1);
+    // Usar filter en vez de where('activo').equals() porque activo es boolean
+    // y el índice numérico no coincide可靠mente con true/false entre versiones
+    let coll = db.productos.filter((p: any) => inactivos ? !p.activo : p.activo);
 
-    // Aplicar filtros exactos usando índices
-    let coll: any = baseQuery;
+    // Aplicar filtros exactos
     if (categoria) coll = coll.filter((p: any) => p.categoria === categoria);
     if (marca) coll = coll.filter((p: any) => p.marca === marca);
     if (ubicacionId) coll = coll.filter((p: any) => p.ubicacionId === ubicacionId);
     if (soloBajoStock) coll = coll.filter((p: any) => p.stockActual > 0 && p.stockActual <= p.stockMinimo);
 
-    // Búsqueda por texto: usar índice en nombre para prefijo, luego filtrar resto en memoria
+    // Búsqueda por texto
     if (busqueda) {
       const q = busqueda.trim().toLowerCase();
-      // Dexie no tiene startsWithIgnoreCase nativo, usamos filter sobre la colección ya reducida
       coll = coll.filter((p: any) =>
-        p.nombre.toLowerCase().includes(q) ||
-        p.plu.toLowerCase().includes(q) ||
-        p.codigoBarras.toLowerCase().includes(q)
+        p.nombre?.toLowerCase().includes(q) ||
+        p.plu?.toLowerCase().includes(q) ||
+        p.codigoBarras?.toLowerCase().includes(q)
       );
     }
 
-    // Contar total ANTES de paginar (usa count() en el índice)
+    // Contar total ANTES de paginar
     const total = await coll.count();
 
-    // Ordenar por nombre usando el índice y paginar con offset/limit
-    const items = await coll.offset((pagina - 1) * limite).limit(limite).sortBy('nombre');
+    // Ordenar por nombre y paginar
+    const todos = await coll.sortBy('nombre');
+    const offset = (pagina - 1) * limite;
+    const items = todos.slice(offset, offset + limite);
 
-    return { items, total, pagina, limite, hasMore: (pagina - 1) * limite + items.length < total };
+    return { items, total, pagina, limite, hasMore: offset + items.length < total };
   },
 
   obtener(id: string): Promise<Producto | undefined> {

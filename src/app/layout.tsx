@@ -42,7 +42,6 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js" crossOrigin="anonymous" />
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3701366832739992" crossOrigin="anonymous" />
       </head>
       <body className={inter.className}>
@@ -58,6 +57,18 @@ export default function RootLayout({
                     console.warn('[SW] error:', err);
                   });
                 });
+              }
+              // Precargar chunks de ZXing en idle para apertura instantánea del scanner
+              if ('requestIdleCallback' in window) {
+                requestIdleCallback(() => {
+                  import('@zxing/browser').catch(() => {});
+                  import('@zxing/library').catch(() => {});
+                });
+              } else {
+                setTimeout(() => {
+                  import('@zxing/browser').catch(() => {});
+                  import('@zxing/library').catch(() => {});
+                }, 2000);
               }
             `,
           }}

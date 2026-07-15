@@ -38,6 +38,15 @@ function esIOS(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+function esGamaBaja(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+    ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 3) ||
+    /Android.*(?:SM-A|SM-J|SM-K|LM-[XQGK]|K40)/i.test(navigator.userAgent)
+  );
+}
+
 const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
   ({ onScan, activo, cooldownMs = 1500, onReady }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -108,19 +117,54 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
+      // Resoluciones según gama: menor = apertura más rápida + decodificación más ágil
+      const videoConstraints: any = esGamaBaja()
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } };
+
+      if (esIOS()) {
+        videoConstraints.frameRate = { ideal: 24, max: 30 };
+      }
+
       try {
-        const [zxingBrowser, zxingLib, stream] = await Promise.all([
+        // Iniciar getUserMedia inmediatamente (es lo que tarda 3s en gama baja)
+        const stream = await navigator.mediaDevices?.getUserMedia({
+          video: videoConstraints,
+          audio: false,
+        });
+
+        if (!mountedRef.current) {
+          matarStream(stream);
+          return;
+        }
+
+        streamRef.current = stream;
+
+        // Signal visual inmediato: mostrar video apenas llegue el stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          // play() no-await: el video se muestra ni bien pueda
+          videoRef.current.play().catch(() => {});
+        }
+
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const caps = track.getCapabilities() as any;
+          setTorchAvailable(!!caps?.torch);
+        }
+
+        if (!mountedRef.current) {
+          matarStream(stream);
+          return;
+        }
+
+        setCameraState('active');
+        onReady?.();
+
+        // Cargar ZXing en paralelo después de mostrar video
+        const [zxingBrowser, zxingLib] = await Promise.all([
           import('@zxing/browser'),
           import('@zxing/library'),
-          navigator.mediaDevices?.getUserMedia({
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
-              ...(esIOS() ? { frameRate: { ideal: 24, max: 30 } } : {}),
-            },
-            audio: false,
-          }),
         ]);
 
         if (!mountedRef.current) {
@@ -131,38 +175,18 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         const { BrowserMultiFormatReader } = zxingBrowser;
         const { DecodeHintType, BarcodeFormat } = zxingLib;
 
+        // Hints optimizados para gama baja: solo formatos comunes + TRY_HARDER
         const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.QR_CODE,
-        ]);
+        const lowDevice = esGamaBaja();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, lowDevice
+          ? [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.QR_CODE]
+          : [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.QR_CODE]
+        );
         hints.set(DecodeHintType.TRY_HARDER, true);
-
-        streamRef.current = stream;
-
-        const track = stream.getVideoTracks()[0];
-        if (track) {
-          const caps = track.getCapabilities() as any;
-          setTorchAvailable(!!caps?.torch);
+        // En gama baja: reducir esfuerzo dePURE Pursuit para sampling más rápido
+        if (lowDevice) {
+          hints.set(DecodeHintType.ASSUME_CODE_39_CHECK_DIGIT, false);
         }
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-
-        if (!mountedRef.current) {
-          matarStream(stream);
-          return;
-        }
-
-        setCameraState('active');
-        onReady?.();
 
         const reader = new BrowserMultiFormatReader(hints);
         readerRef.current = reader;
@@ -209,6 +233,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
       // Reactivar tracks pausadas
       streamRef.current.getTracks().forEach(t => { t.enabled = true; });
+      setCameraState('active');
+      onReady?.();
 
       try {
         const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
@@ -217,15 +243,10 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         ]);
 
         const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.QR_CODE,
-        ]);
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, esGamaBaja()
+          ? [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.QR_CODE]
+          : [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.QR_CODE]
+        );
         hints.set(DecodeHintType.TRY_HARDER, true);
 
         const reader = new BrowserMultiFormatReader(hints);
@@ -255,10 +276,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         );
 
         controlsRef.current = controls;
-        if (mountedRef.current) {
-          setCameraState('active');
-          onReady?.();
-        }
       } catch (err) {
         console.error('[scanner] reanudarDecodificacion error:', err);
       }
