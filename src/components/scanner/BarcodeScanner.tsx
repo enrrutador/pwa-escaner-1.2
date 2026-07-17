@@ -61,7 +61,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const lowEnd = esGamaBaja();
 
     // BarcodeDetector nativo (Android Chrome) + ZXing fallback (iOS)
-    const { detect, ensureZXing, stop: stopEngine, useNative } = useBarcodeDetector({
+    const { detect, startZXing, stop: stopEngine, useNative } = useBarcodeDetector({
       onDetect: useCallback((results) => {
         if (!mountedRef.current) return;
         for (const r of results) {
@@ -110,15 +110,15 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           scanLoopRef.current = requestAnimationFrame(loop);
         }
       } else {
-        // ZXing: arranca su loop interno una vez
-        ensureZXing(videoRef.current);
+        // ZXing: loop manual con throttle agresivo (2000ms en lowEnd) - controlado desde hook
+        startZXing(videoRef.current);
       }
 
       return () => {
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
         if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
       };
-    }, [cameraState, useNative, detect, ensureZXing, lowEnd]);
+    }, [cameraState, useNative, detect, startZXing, lowEnd]);
 
     const pausarDecodificacion = useCallback(() => {
       stopEngine();

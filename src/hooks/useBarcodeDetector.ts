@@ -62,13 +62,15 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
   const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
-  const zxingStartedRef = useRef(false);
+  const zxingReaderRef = useRef<{ decodeFromVideoElement: Function } | null>(null);
+  const zxingRunningRef = useRef(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     onDetectRef.current = onDetect;
   }, [onDetect]);
 
+  // Inicializar BarcodeDetector nativo
   useEffect(() => {
     mountedRef.current = true;
     const init = async () => {
@@ -89,6 +91,7 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Detectar con nativo (throttle externo desde componente)
   const detect = useCallback(async (video: HTMLVideoElement) => {
     if (!useNative || !nativeDetectorRef.current) return;
     if (!video || video.readyState < 2 || video.paused) return;
@@ -105,10 +108,11 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
     }
   }, [useNative]);
 
-  const ensureZXing = useCallback(async (video: HTMLVideoElement) => {
-    if (useNative || zxingStartedRef.current) return;
+  // ZXing: loop manual con throttle agresivo
+  const startZXing = useCallback(async (video: HTMLVideoElement) => {
+    if (useNative || zxingRunningRef.current) return;
     if (!video || video.readyState < 2) return;
-    zxingStartedRef.current = true;
+    zxingRunningRef.current = true;
 
     const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
       import('@zxing/browser'),
@@ -117,26 +121,43 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
 
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, getZxingFormats(BarcodeFormat as Record<string, unknown>));
-    // TRY_HARDER es muy lento en gama baja; desactivado para priorizar fluidez
     hints.set(DecodeHintType.TRY_HARDER, !lowEnd);
 
     const reader = new BrowserMultiFormatReader(hints);
-    await reader.decodeFromVideoElement(
-      video,
-      (result: ZXingCallbackResult, _err: unknown) => {
-        if (!result || !mountedRef.current) return;
-        const codigo = result.getText().trim();
-        const formato = BarcodeFormat[result.getBarcodeFormat() as keyof typeof BarcodeFormat] ?? 'UNKNOWN';
-        if (codigo.length >= 4) {
-          onDetectRef.current([{ rawValue: codigo, format: String(formato) }]);
+    zxingReaderRef.current = reader;
+
+    // Loop manual con throttle agresivo
+    const scanLoop = async () => {
+      if (!mountedRef.current || !zxingRunningRef.current || !video || video.paused) return;
+      try {
+        const result = await reader.decodeOnceFromVideoElement(video);
+        if (result && mountedRef.current) {
+          const codigo = result.getText().trim();
+          const bf = result.getBarcodeFormat();
+          const formato = (BarcodeFormat as Record<number | string, unknown>)[String(bf)] ?? 'UNKNOWN';
+          if (codigo.length >= 4) {
+            onDetectRef.current([{ rawValue: codigo, format: String(formato) }]);
+          }
         }
+      } catch {
+        // no result this iteration
       }
-    );
-  }, [useNative]);
+
+      if (!mountedRef.current || !zxingRunningRef.current) return;
+
+      // Throttle: 500ms gama alta, 1000ms gama baja
+      const delay = lowEnd ? 1000 : 500;
+      setTimeout(scanLoop, delay);
+    };
+
+    // Start the loop
+    scanLoop();
+  }, [useNative, lowEnd]);
 
   const stop = useCallback(() => {
-    zxingStartedRef.current = false;
+    zxingRunningRef.current = false;
+    zxingReaderRef.current = null;
   }, []);
 
-  return { detect, ensureZXing, stop, useNative };
+  return { detect, startZXing, stop, useNative };
 }
