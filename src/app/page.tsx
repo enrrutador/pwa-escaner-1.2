@@ -76,6 +76,11 @@ export default function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState<any[]>([]);
   const [buscando, setBuscando] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
 
   const abrirEscaneo = async (e: { id: string; codigo: string; productoId?: string | null }) => {
     if (e.productoId) {
@@ -91,11 +96,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!inicializado) return;
+    if (!inicializado || !hasHydrated) return;
     dbAlertas.contarNoLeidas().then(setAlertasNoLeidas);
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
     dbEscaneos.listar({ limite: 5 }).then((escaneos) => setUltimosEscaneos(escaneos as any)).catch(() => {});
-  }, [inicializado]);
+  }, [inicializado, hasHydrated]);
 
   // Búsqueda predictiva con debounce
   useEffect(() => {
@@ -146,7 +151,7 @@ export default function Dashboard() {
     return () => clearTimeout(timeout);
   }, [busqueda, buscadorOpen]);
 
-  if (!inicializado) {
+  if (!inicializado || !hasHydrated) {
     return (
       <div className="screen active">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

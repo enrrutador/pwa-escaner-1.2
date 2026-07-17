@@ -1,8 +1,5 @@
-// src/store/authStore.ts
-'use client';
-
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, type StateStorage } from 'zustand/middleware';
 import type { Usuario, Permiso } from '@/types';
 import { PERMISOS_POR_ROL } from '@/types';
 import { dbUsuarios } from '@/lib/db-usuarios';
@@ -11,6 +8,7 @@ import { seedSiVacio } from '@/lib/seed';
 interface AuthState {
   usuario: Usuario | null;
   inicializado: boolean;
+  _hasHydrated: boolean;
   inicializar: () => Promise<void>;
   login: (nombre: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
@@ -18,11 +16,16 @@ interface AuthState {
   esAdmin: () => boolean;
 }
 
+interface PersistedAuthState {
+  usuario: Usuario | null;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       usuario: null,
       inicializado: false,
+      _hasHydrated: false,
 
       async inicializar() {
         // Seed inicial si la DB está vacía
@@ -70,7 +73,10 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'stockmaster-auth',
       // Solo persistimos el usuario.
-      partialize: (state) => ({ usuario: state.usuario }),
-    },
-  ),
+      partialize: (state): PersistedAuthState => ({ usuario: state.usuario }),
+      onRehydrateStorage: () => (state) => {
+        if (state) state._hasHydrated = true;
+      },
+    }
+  )
 );

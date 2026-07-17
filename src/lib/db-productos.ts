@@ -106,6 +106,7 @@ export const dbProductos = {
   /**
    * Ajuste de stock atómico. Crea movimiento y recalcula alerta en una sola
    * transacción rw sobre productos + movimientos + alertas. Evita stock negativo.
+   * Devuelve el producto actualizado completo.
    */
   async ajustarStock(
     id: string,
@@ -113,7 +114,7 @@ export const dbProductos = {
     tipo: TipoMovimiento,
     motivo: string,
     usuarioId: string,
-  ): Promise<{ stockAntes: number; stockDespues: number }> {
+  ): Promise<Producto> {
     return db.transaction('rw', db.productos, db.movimientos, db.alertas, async () => {
       const p = await db.productos.get(id);
       if (!p) throw new Error('Producto no encontrado');
@@ -139,9 +140,12 @@ export const dbProductos = {
         createdAt: now(),
       });
 
-      await dbAlertas.evaluarProducto({ ...p, stockActual: stockDespues });
+      const productoActualizado = await db.productos.get(id);
+      if (!productoActualizado) throw new Error('Producto no encontrado tras actualización');
+
+      await dbAlertas.evaluarProducto(productoActualizado);
       eventBus.emit();
-      return { stockAntes, stockDespues };
+      return productoActualizado;
     });
   },
 

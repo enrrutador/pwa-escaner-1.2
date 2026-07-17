@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/utils';
@@ -19,23 +19,24 @@ export default function ProductoDetalle() {
   const [ubicacionNombre, setUbicacionNombre] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
-  useEffect(() => {
-    const cargar = async () => {
-      const [p, movs] = await Promise.all([
-        dbProductos.obtener(id),
-        dbMovimientos.listar({ productoId: id, limite: 20 }),
-      ]);
-      if (!p) { router.push('/inventario'); return; }
-      setProducto(p);
-      setMovimientos(movs.items);
-      if (p.ubicacionId) {
-        const u = await dbUbicaciones.obtener(p.ubicacionId);
-        setUbicacionNombre(u?.nombre || null);
-      }
-      setCargando(false);
-    };
-    cargar();
+  const cargar = useCallback(async () => {
+    const [p, movs] = await Promise.all([
+      dbProductos.obtener(id),
+      dbMovimientos.listar({ productoId: id, limite: 20 }),
+    ]);
+    if (!p) { router.push('/inventario'); return; }
+    setProducto(p);
+    setMovimientos(movs.items);
+    if (p.ubicacionId) {
+      const u = await dbUbicaciones.obtener(p.ubicacionId);
+      setUbicacionNombre(u?.nombre || null);
+    }
+    setCargando(false);
   }, [id, router]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const ajustarStock = async (tipo: 'entrada' | 'salida', cantidad: number) => {
     if (!usuario) return;
