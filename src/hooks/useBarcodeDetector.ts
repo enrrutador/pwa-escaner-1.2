@@ -27,6 +27,7 @@ export interface BarcodeResult {
 
 interface UseBarcodeDetectorOptions {
   onDetect: (results: BarcodeResult[]) => void;
+  lowEnd?: boolean;
 }
 
 const TARGET_FORMATS = [
@@ -57,7 +58,7 @@ interface ZXingControls {
   stop(): void;
 }
 
-export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
+export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
   const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
@@ -116,7 +117,8 @@ export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
 
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, getZxingFormats(BarcodeFormat as Record<string, unknown>));
-    hints.set(DecodeHintType.TRY_HARDER, true);
+    // TRY_HARDER es muy lento en gama baja; desactivado para priorizar fluidez
+    hints.set(DecodeHintType.TRY_HARDER, !lowEnd);
 
     const reader = new BrowserMultiFormatReader(hints);
     await reader.decodeFromVideoElement(

@@ -44,7 +44,7 @@ function esGamaBaja(): boolean {
   return (
     (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
     ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 3) ||
-    /Android.*(?:SM-A|SM-J|SM-K|LM-[XQGK]|K40)/i.test(navigator.userAgent)
+    /Android.*(?:SM-A|SM-J|SM-K|SM-M|SM-G[0-9]|LM-[XQGK]|K40|J7|Grand|Prime|A0[0-9])/i.test(navigator.userAgent)
   );
 }
 
@@ -58,6 +58,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const [cameraState, setCameraState] = useState<CameraState>('idle');
     const [torchOn, setTorchOn] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
+    const lowEnd = esGamaBaja();
 
     // BarcodeDetector nativo (Android Chrome) + ZXing fallback (iOS)
     const { detect, ensureZXing, stop: stopEngine, useNative } = useBarcodeDetector({
@@ -75,25 +76,39 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           break;
         }
       }, [cooldownMs, onScan]),
+      lowEnd,
     });
 
     // Arranca el engine de detección cuando la cámara está activa
     const scanLoopRef = useRef<number | null>(null);
+    const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     useEffect(() => {
       if (cameraState !== 'active') {
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
+        if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
         return;
       }
       if (!videoRef.current) return;
 
       if (useNative) {
-        // Native: rAF loop ligero llamando detect()
-        const loop = () => {
-          if (!mountedRef.current || !videoRef.current) return;
-          detect(videoRef.current);
+        if (lowEnd) {
+          // Gama baja: throttle 500ms para no trabar el Main Thread
+          const tick = async () => {
+            if (!mountedRef.current || !videoRef.current) return;
+            await detect(videoRef.current);
+            scanTimeoutRef.current = setTimeout(tick, 500);
+          };
+          scanTimeoutRef.current = setTimeout(tick, 500);
+        } else {
+          // Gama alta: rAF loop continuo
+          const loop = () => {
+            if (!mountedRef.current || !videoRef.current) return;
+            detect(videoRef.current);
+            scanLoopRef.current = requestAnimationFrame(loop);
+          };
           scanLoopRef.current = requestAnimationFrame(loop);
-        };
-        scanLoopRef.current = requestAnimationFrame(loop);
+        }
       } else {
         // ZXing: arranca su loop interno una vez
         ensureZXing(videoRef.current);
@@ -101,12 +116,14 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
       return () => {
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
+        if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
       };
-    }, [cameraState, useNative, detect, ensureZXing]);
+    }, [cameraState, useNative, detect, ensureZXing, lowEnd]);
 
     const pausarDecodificacion = useCallback(() => {
       stopEngine();
       if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
+      if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
       // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => { t.enabled = false; });
@@ -119,6 +136,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const apagarCamaraCompleto = useCallback(() => {
       stopEngine();
       if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
+      if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
       matarStream(streamRef.current);
       streamRef.current = null;
       if (videoRef.current) {
@@ -149,9 +167,9 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
-      // Resolución: 1280x720 gama baja (5px/módulo EAN-13 a 30cm), 640x480 iPhone
+      // Resolución: 480p gama baja (menos CPU), 720p gama alta/iPhone
       const videoConstraints: any = esGamaBaja()
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 960 }, height: { ideal: 720, min: 540 }, focusMode: 'continuous' }
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640, min: 480 }, height: { ideal: 480, min: 360 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } };
 
       if (esIOS()) {
@@ -259,7 +277,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         <div className="corner tr" />
         <div className="corner bl" />
         <div className="corner br" />
-        <div className="laser" />
+        {!lowEnd && <div className="laser" />}
         {cameraState === 'active' && (
           <div className="scan-hint">
             <span>Alineá el código de barras dentro del marco</span>
