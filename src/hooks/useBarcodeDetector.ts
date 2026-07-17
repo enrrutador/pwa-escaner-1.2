@@ -28,6 +28,7 @@ export interface BarcodeResult {
 interface UseBarcodeDetectorOptions {
   onDetect: (results: BarcodeResult[]) => void;
   lowEnd?: boolean;
+  cropRect?: { x: number; y: number; width: number; height: number } | null;
 }
 
 const TARGET_FORMATS = [
@@ -49,20 +50,14 @@ function getZxingFormats(BarcodeFormat: Record<string, unknown>): unknown[] {
 
 interface ZXingResult {
   getText(): string;
-  getBarcodeFormat(): string | number;
+  getBarcodeFormat(): number | string;
 }
 
-type ZXingCallbackResult = ZXingResult | null | undefined;
-
-interface ZXingControls {
-  stop(): void;
-}
-
-export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetectorOptions) {
+export function useBarcodeDetector({ onDetect, lowEnd = false, cropRect = null }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
   const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
-  const zxingReaderRef = useRef<{ decodeFromVideoElement: Function } | null>(null);
+  const zxingReaderRef = useRef<{ decodeFromCanvas: Function } | null>(null);
   const zxingRunningRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -84,19 +79,18 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
         nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
         setUseNative(true);
       } catch {
-        // native not usable, stay with ZXing
+        // native not usable
       }
     };
     init();
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Detectar con nativo (throttle externo desde componente)
-  const detect = useCallback(async (video: HTMLVideoElement) => {
+  // Detectar con nativo (recibe ImageBitmap del crop)
+  const detect = useCallback(async (imageBitmap: ImageBitmap) => {
     if (!useNative || !nativeDetectorRef.current) return;
-    if (!video || video.readyState < 2 || video.paused) return;
     try {
-      const results = await nativeDetectorRef.current.detect(video);
+      const results = await nativeDetectorRef.current.detect(imageBitmap);
       if (results.length > 0) {
         onDetectRef.current(results.map((r) => ({
           rawValue: r.rawValue,
@@ -104,12 +98,12 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
         })));
       }
     } catch {
-      // single detect failure, ignore
+      // ignore
     }
   }, [useNative]);
 
-  // ZXing: loop manual con throttle agresivo
-  const startZXing = useCallback(async (video: HTMLVideoElement) => {
+  // ZXing: loop manual con crop canvas
+  const startZXing = useCallback(async (video: HTMLVideoElement, crop: { x: number; y: number; width: number; height: number }) => {
     if (useNative || zxingRunningRef.current) return;
     if (!video || video.readyState < 2) return;
     zxingRunningRef.current = true;
@@ -126,11 +120,19 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
     const reader = new BrowserMultiFormatReader(hints);
     zxingReaderRef.current = reader;
 
-    // Loop manual con throttle agresivo
+    // Canvas pequeño para el crop (reutilizable)
+    const canvas = document.createElement('canvas');
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+
     const scanLoop = async () => {
-      if (!mountedRef.current || !zxingRunningRef.current || !video || video.paused) return;
+      if (!mountedRef.current || !zxingRunningRef.current || video.paused) return;
       try {
-        const result = await reader.decodeOnceFromVideoElement(video);
+        // Dibujar SOLO la región del viewfinder
+        ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+        
+        const result = await reader.decodeFromCanvas(canvas);
         if (result && mountedRef.current) {
           const codigo = result.getText().trim();
           const bf = result.getBarcodeFormat();
@@ -145,12 +147,11 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
 
       if (!mountedRef.current || !zxingRunningRef.current) return;
 
-      // Throttle: 500ms gama alta, 1000ms gama baja
-      const delay = lowEnd ? 1000 : 500;
+      // Throttle: 500ms gama alta, 800ms gama baja
+      const delay = lowEnd ? 800 : 500;
       setTimeout(scanLoop, delay);
     };
 
-    // Start the loop
     scanLoop();
   }, [useNative, lowEnd]);
 

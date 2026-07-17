@@ -54,13 +54,15 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const streamRef = useRef<MediaStream | null>(null);
     const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
     const mountedRef = useRef(true);
+    const cropRectRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
     const [cameraState, setCameraState] = useState<CameraState>('idle');
     const [torchOn, setTorchOn] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
+
     const lowEnd = esGamaBaja();
 
-    // BarcodeDetector nativo (Android Chrome) + ZXing fallback (iOS)
+    // BarcodeDetector nativo + ZXing fallback con crop
     const { detect, startZXing, stop: stopEngine, useNative } = useBarcodeDetector({
       onDetect: useCallback((results) => {
         if (!mountedRef.current) return;
@@ -79,64 +81,77 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       lowEnd,
     });
 
-    // Arranca el engine de detección cuando la cámara está activa
-    const scanLoopRef = useRef<number | null>(null);
-    const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Calcular rectángulo de crop (viewfinder centrado, 70% ancho, 40% alto)
+    const calcularCrop = useCallback(() => {
+      const video = videoRef.current;
+      if (!video || video.videoWidth === 0) return null;
+      
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      // Viewfinder: 70% ancho, 40% alto, centrado
+      const cropW = Math.round(vw * 0.7);
+      const cropH = Math.round(vh * 0.4);
+      const cropX = Math.round((vw - cropW) / 2);
+      const cropY = Math.round((vh - cropH) / 2);
+      
+      return { x: cropX, y: cropY, width: cropW, height: cropH };
+    }, []);
 
+    // Arranca el engine de detección cuando la cámara está activa
+    const scanLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    
     useEffect(() => {
       if (cameraState !== 'active') {
-        if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
-        if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
+        if (scanLoopRef.current) { clearTimeout(scanLoopRef.current); scanLoopRef.current = null; }
         return;
       }
       if (!videoRef.current) return;
 
+      const crop = calcularCrop();
+      if (!crop) return;
+      cropRectRef.current = crop;
+
       if (useNative) {
-        if (lowEnd) {
-          // Gama baja: throttle 500ms para no trabar el Main Thread
-          const tick = async () => {
-            if (!mountedRef.current || !videoRef.current) return;
-            await detect(videoRef.current);
-            scanTimeoutRef.current = setTimeout(tick, 500);
-          };
-          scanTimeoutRef.current = setTimeout(tick, 500);
-        } else {
-          // Gama alta: rAF loop continuo
-          const loop = () => {
-            if (!mountedRef.current || !videoRef.current) return;
-            detect(videoRef.current);
-            scanLoopRef.current = requestAnimationFrame(loop);
-          };
-          scanLoopRef.current = requestAnimationFrame(loop);
-        }
+        // Nativo: crear ImageBitmap del crop y detectar
+        const tick = async () => {
+          if (!mountedRef.current || !videoRef.current || videoRef.current.paused) return;
+          const v = videoRef.current;
+          const c = cropRectRef.current;
+          if (!c) return;
+          
+          try {
+            // Crear bitmap solo de la región del viewfinder
+            const bitmap = await createImageBitmap(v, c.x, c.y, c.width, c.height, { resizeQuality: 'low' });
+            await detect(bitmap);
+            bitmap.close();
+          } catch {
+            // ignore
+          }
+          scanLoopRef.current = setTimeout(tick, lowEnd ? 500 : 300);
+        };
+        scanLoopRef.current = setTimeout(tick, 0);
       } else {
-        // ZXing: loop manual con throttle agresivo (2000ms en lowEnd) - controlado desde hook
-        startZXing(videoRef.current);
+        // ZXing: loop manual con canvas crop
+        startZXing(videoRef.current, crop);
       }
 
       return () => {
-        if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
-        if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
+        if (scanLoopRef.current) { clearTimeout(scanLoopRef.current); scanLoopRef.current = null; }
       };
-    }, [cameraState, useNative, detect, startZXing, lowEnd]);
+    }, [cameraState, useNative, detect, startZXing, lowEnd, calcularCrop]);
 
     const pausarDecodificacion = useCallback(() => {
       stopEngine();
-      if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
-      if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
-      // Pausar tracks sin matar el stream (iOS no pide permiso de nuevo)
+      if (scanLoopRef.current) { clearTimeout(scanLoopRef.current); scanLoopRef.current = null; }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => { t.enabled = false; });
       }
-      if (mountedRef.current) {
-        setCameraState('idle');
-      }
+      if (mountedRef.current) setCameraState('idle');
     }, [stopEngine]);
 
     const apagarCamaraCompleto = useCallback(() => {
       stopEngine();
-      if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
-      if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
+      if (scanLoopRef.current) { clearTimeout(scanLoopRef.current); scanLoopRef.current = null; }
       matarStream(streamRef.current);
       streamRef.current = null;
       if (videoRef.current) {
@@ -145,9 +160,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       }
       setTorchOn(false);
       setTorchAvailable(false);
-      if (mountedRef.current) {
-        setCameraState('idle');
-      }
+      if (mountedRef.current) setCameraState('idle');
     }, [stopEngine]);
 
     const inicializar = useCallback(async () => {
@@ -167,10 +180,13 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
-      // Resolución: 480p gama baja (menos CPU), 720p gama alta/iPhone
-      const videoConstraints: any = esGamaBaja()
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640, min: 480 }, height: { ideal: 480, min: 360 }, focusMode: 'continuous' }
-        : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } };
+      // Resolución: 1280x720 siempre (mejor calidad para crop), focusMode continuous
+      const videoConstraints: any = {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 480 },
+        focusMode: 'continuous',
+      };
 
       if (esIOS()) {
         videoConstraints.frameRate = { ideal: 24, max: 30 };
@@ -198,6 +214,20 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         }
 
         if (!mountedRef.current) { matarStream(stream); return; }
+
+        // Esperar a que el video esté reproduciendo
+        await new Promise<void>((resolve) => {
+          const v = videoRef.current;
+          if (!v) { resolve(); return; }
+          if (!v.paused && v.readyState >= 2) { resolve(); return; }
+          const timeout = setTimeout(resolve, 3000);
+          const onPlaying = () => {
+            v.removeEventListener('playing', onPlaying);
+            clearTimeout(timeout);
+            resolve();
+          };
+          v.addEventListener('playing', onPlaying, { once: true });
+        });
 
         setCameraState('active');
         onReady?.();
@@ -231,10 +261,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     useEffect(() => {
       const handler = () => {
         if (document.hidden) {
-          // Background: pausar tracks sin matar stream (iOS no pide permiso al volver)
           pausarDecodificacion();
         } else if (activo && streamRef.current) {
-          // Foreground: reusar stream existente
           setTimeout(() => {
             if (mountedRef.current && activo) inicializar();
           }, 300);
@@ -245,9 +273,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     }, [activo, pausarDecodificacion, inicializar]);
 
     useEffect(() => {
-      if (cameraState === 'active' && onReady) {
-        onReady();
-      }
+      if (cameraState === 'active' && onReady) onReady();
     }, [cameraState, onReady]);
 
     const alternarTorch = useCallback(async (): Promise<boolean> => {
@@ -270,7 +296,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       apagarCamara: apagarCamaraCompleto,
     }), [alternarTorch, torchAvailable, apagarCamaraCompleto]);
 
-    // Viewfinder UI (esquinas, laser, hint) — renderizado SIEMPRE encima del video
+    // Viewfinder UI
     const viewfinderUI = (
       <div className="viewfinder">
         <div className="corner tl" />
@@ -296,7 +322,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Viewfinder SIEMPRE visible cuando activo=true (encima del video) */}
         {activo && viewfinderUI}
 
         {cameraState === 'denied' && (
