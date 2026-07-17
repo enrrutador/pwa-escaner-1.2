@@ -28,7 +28,6 @@ export interface BarcodeResult {
 interface UseBarcodeDetectorOptions {
   onDetect: (results: BarcodeResult[]) => void;
   lowEnd?: boolean;
-  cropRect?: { x: number; y: number; width: number; height: number } | null;
 }
 
 const TARGET_FORMATS = [
@@ -48,24 +47,70 @@ function getZxingFormats(BarcodeFormat: Record<string, unknown>): unknown[] {
   return _zxingFormatsCache;
 }
 
-interface ZXingResult {
-  getText(): string;
-  getBarcodeFormat(): number | string;
+// Worker inline as blob
+function createZXingWorker(lowEnd: boolean): Worker {
+  const workerCode = `
+    importScripts('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/esm/index.js');
+    importScripts('https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/esm/index.js');
+
+    const { BrowserMultiFormatReader } = ZXingBrowser;
+    const { DecodeHintType, BarcodeFormat } = ZXing;
+
+    let reader = null;
+    let hints = null;
+    let running = false;
+    let lowEndMode = ${lowEnd};
+
+    const formatKeys = ['EAN_13', 'EAN_8', 'UPC_A', 'UPC_E', 'CODE_128', 'CODE_39', 'QR_CODE'];
+
+    function initReader() {
+      hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, formatKeys.map(k => BarcodeFormat[k]).filter(Boolean));
+      hints.set(DecodeHintType.TRY_HARDER, !lowEndMode);
+      reader = new BrowserMultiFormatReader(hints);
+    }
+
+    self.onmessage = async (e) => {
+      const { type, payload } = e.data;
+      if (type === 'init') {
+        lowEndMode = payload.lowEnd;
+        initReader();
+        self.postMessage({ type: 'ready' });
+      } else if (type === 'decode') {
+        if (!reader) initReader();
+        const { canvas, width, height } = payload;
+        try {
+          const result = await reader.decodeFromCanvas(canvas);
+          if (result) {
+            const bf = result.getBarcodeFormat();
+            const format = BarcodeFormat[bf] ?? 'UNKNOWN';
+            self.postMessage({ 
+              type: 'result', 
+              payload: { code: result.getText().trim(), format: String(format) } 
+            });
+          }
+        } catch (err) {
+          // no result
+        }
+      } else if (type === 'stop') {
+        running = false;
+      }
+    };
+  `;
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  return new Worker(URL.createObjectURL(blob));
 }
 
-export function useBarcodeDetector({ onDetect, lowEnd = false, cropRect = null }: UseBarcodeDetectorOptions) {
+export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
   const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
-  const zxingReaderRef = useRef<{ decodeFromCanvas: Function } | null>(null);
-  const zxingRunningRef = useRef(false);
+  const workerRef = useRef<Worker | null>(null);
   const mountedRef = useRef(true);
 
-  useEffect(() => {
-    onDetectRef.current = onDetect;
-  }, [onDetect]);
+  useEffect(() => { onDetectRef.current = onDetect; }, [onDetect]);
 
-  // Inicializar BarcodeDetector nativo
+  // Native BarcodeDetector init
   useEffect(() => {
     mountedRef.current = true;
     const init = async () => {
@@ -78,86 +123,67 @@ export function useBarcodeDetector({ onDetect, lowEnd = false, cropRect = null }
         if (available.length === 0) return;
         nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
         setUseNative(true);
-      } catch {
-        // native not usable
-      }
+      } catch {}
     };
     init();
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Detectar con nativo (recibe ImageBitmap del crop)
+  // Detect with native
   const detect = useCallback(async (imageBitmap: ImageBitmap) => {
     if (!useNative || !nativeDetectorRef.current) return;
     try {
       const results = await nativeDetectorRef.current.detect(imageBitmap);
       if (results.length > 0) {
-        onDetectRef.current(results.map((r) => ({
-          rawValue: r.rawValue,
-          format: r.format,
-        })));
+        onDetectRef.current(results.map((r) => ({ rawValue: r.rawValue, format: r.format })));
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [useNative]);
 
-  // ZXing: loop manual con crop canvas
+  // ZXing via Worker
   const startZXing = useCallback(async (video: HTMLVideoElement, crop: { x: number; y: number; width: number; height: number }) => {
-    if (useNative || zxingRunningRef.current) return;
+    if (useNative || workerRef.current) return;
     if (!video || video.readyState < 2) return;
-    zxingRunningRef.current = true;
 
-    const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
-      import('@zxing/browser'),
-      import('@zxing/library'),
-    ]);
+    const worker = createZXingWorker(lowEnd);
+    workerRef.current = worker;
 
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, getZxingFormats(BarcodeFormat as Record<string, unknown>));
-    hints.set(DecodeHintType.TRY_HARDER, !lowEnd);
-
-    const reader = new BrowserMultiFormatReader(hints);
-    zxingReaderRef.current = reader;
-
-    // Canvas pequeño para el crop (reutilizable)
     const canvas = document.createElement('canvas');
     canvas.width = crop.width;
     canvas.height = crop.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
-    const scanLoop = async () => {
-      if (!mountedRef.current || !zxingRunningRef.current || video.paused) return;
-      try {
-        // Dibujar SOLO la región del viewfinder
-        ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
-        
-        const result = await reader.decodeFromCanvas(canvas);
-        if (result && mountedRef.current) {
-          const codigo = result.getText().trim();
-          const bf = result.getBarcodeFormat();
-          const formato = (BarcodeFormat as Record<number | string, unknown>)[String(bf)] ?? 'UNKNOWN';
-          if (codigo.length >= 4) {
-            onDetectRef.current([{ rawValue: codigo, format: String(formato) }]);
-          }
-        }
-      } catch {
-        // no result this iteration
+    worker.onmessage = (e) => {
+      const { type, payload } = e.data;
+      if (type === 'result' && mountedRef.current && payload.code.length >= 4) {
+        onDetectRef.current([{ rawValue: payload.code, format: payload.format }]);
       }
-
-      if (!mountedRef.current || !zxingRunningRef.current) return;
-
-      // Throttle: 500ms gama alta, 800ms gama baja
-      const delay = lowEnd ? 800 : 500;
-      setTimeout(scanLoop, delay);
     };
 
+    worker.postMessage({ type: 'init', payload: { lowEnd } });
+
+    await new Promise<void>((resolve) => {
+      worker.onmessage = (e) => { if (e.data.type === 'ready') resolve(); };
+    });
+
+    const scanLoop = async () => {
+      if (!mountedRef.current || !workerRef.current || video.paused) return;
+      try {
+        ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+        worker.postMessage({ type: 'decode', payload: { canvas: canvas, width: crop.width, height: crop.height } }, [canvas]);
+      } catch {}
+      if (!mountedRef.current || !workerRef.current) return;
+      setTimeout(scanLoop, lowEnd ? 800 : 500);
+    };
     scanLoop();
   }, [useNative, lowEnd]);
 
   const stop = useCallback(() => {
-    zxingRunningRef.current = false;
-    zxingReaderRef.current = null;
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: 'stop' });
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
   }, []);
 
   return { detect, startZXing, stop, useNative };
