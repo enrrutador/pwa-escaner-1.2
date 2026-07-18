@@ -41,10 +41,23 @@ function esIOS(): boolean {
 
 function esGamaBaja(): boolean {
   if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const hw = navigator.hardwareConcurrency;
+  const mem = (navigator as any).deviceMemory;
+  
+  // Debug logging
+  console.log('[Scanner] Device detection:', { 
+    ua, 
+    hardwareConcurrency: hw, 
+    deviceMemory: mem,
+    isLowEnd: (hw && hw <= 4) || (mem && mem <= 3) ||
+      /Android.*(?:SM-A|SM-J|SM-K|SM-M|SM-G[0-9]|LM-[XQGK]|K40|J7|Grand|Prime|A0[0-9]|LM-X|LM-K|LM-Q|LG[- ][KM])/i.test(ua)
+  });
+  
   return (
-    (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
-    ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 3) ||
-    /Android.*(?:SM-A|SM-J|SM-K|SM-M|SM-G[0-9]|LM-[XQGK]|K40|J7|Grand|Prime|A0[0-9])/i.test(navigator.userAgent)
+    (hw && hw <= 4) ||
+    (mem && mem <= 3) ||
+    /Android.*(?:SM-A|SM-J|SM-K|SM-M|SM-G[0-9]|LM-[XQGK]|K40|J7|Grand|Prime|A0[0-9]|LM-X|LM-K|LM-Q|LG[- ][KM])/i.test(ua)
   );
 }
 
@@ -60,6 +73,9 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const [torchAvailable, setTorchAvailable] = useState(false);
 
     const lowEnd = esGamaBaja();
+
+    // Debug: mostrar indicador visual del modo
+    const [showDebug, setShowDebug] = useState(false);
 
     // 3 motores: BarcodeDetector nativo > ZXing (iPhone/gama alta) > Quagga2 (gama baja Android)
     const { detect, startZXing, startQuagga, stop: stopEngine, useNative } = useBarcodeDetector({
