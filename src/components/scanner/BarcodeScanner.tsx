@@ -306,6 +306,16 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
             <span>Alineá el código de barras dentro del marco</span>
           </div>
         )}
+        {lowEnd && (
+          <div style={{
+            position: 'absolute', top: 8, right: 8, zIndex: 10,
+            background: 'rgba(255,193,7,0.9)', color: '#000',
+            padding: '2px 8px', borderRadius: 4, fontSize: '10px',
+            fontFamily: 'monospace', fontWeight: 600
+          }}>
+            {useNative ? '🟢 NATIVO' : '🟡 QUAGGA2'}
+          </div>
+        )}
       </div>
     );
 
