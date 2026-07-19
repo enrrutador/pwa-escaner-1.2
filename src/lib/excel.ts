@@ -36,18 +36,43 @@ function parseString(val: unknown): string {
 export interface ImportResult {
   productos: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>[];
   errors: { row: number; message: string }[];
+  conflicts: ImportConflict[];
 }
 
-function workbookToProductos(wb: any): ImportResult {
+export interface ImportConflict {
+  row: number;
+  type: 'ean' | 'plu' | 'both';
+  existing: {
+    id: string;
+    codigoBarras: string;
+    plu: string;
+    nombre: string;
+    stockActual: number;
+    precioVenta: number;
+  };
+  importData: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>;
+  resolution: 'skip' | 'update' | 'create_new';
+}
+
+function workbookToProductos(wb: any, existingProducts: Producto[] = []): ImportResult {
   const utils = (wb as any).utils;
   const sheetName = wb.SheetNames[0];
-  if (!sheetName) return { productos: [], errors: [{ row: 0, message: 'Hoja vacía' }] };
+  if (!sheetName) return { productos: [], errors: [{ row: 0, message: 'Hoja vacía' }], conflicts: [] };
 
   const ws = wb.Sheets[sheetName];
   const rows = (utils as any).sheet_to_json(ws, { defval: '' });
 
   const productos: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>[] = [];
   const errors: { row: number; message: string }[] = [];
+  const conflicts: ImportConflict[] = [];
+
+  // Build lookup maps for O(1) duplicate detection
+  const eanMap = new Map<string, Producto>();
+  const pluMap = new Map<string, Producto>();
+  existingProducts.forEach(p => {
+    if (p.codigoBarras) eanMap.set(p.codigoBarras, p);
+    if (p.plu) pluMap.set(p.plu, p);
+  });
 
   rows.forEach((row: Record<string, string | number>, idx: number) => {
     const rowNum = idx + 2;
@@ -72,6 +97,48 @@ function workbookToProductos(wb: any): ImportResult {
       return;
     }
 
+    // Check for conflicts
+    const existingByEan = codigoBarras ? eanMap.get(codigoBarras) : null;
+    const existingByPlu = plu ? pluMap.get(plu) : null;
+
+    if (existingByEan || existingByPlu) {
+      const existing = existingByEan || existingByPlu!;
+      const conflictType = existingByEan && existingByPlu ? 'both' : (existingByEan ? 'ean' : 'plu');
+      
+      const importData = {
+        plu,
+        codigoBarras,
+        nombre,
+        descripcion: parseString(row['Descripción']) || undefined,
+        categoria: parseString(row['Categoría']) || 'General',
+        marca: parseString(row['Marca']) || '',
+        precioCompra: parseNumber(row['Precio compra']),
+        precioVenta,
+        stockActual: parseNumber(row['Stock actual']),
+        stockMinimo: parseNumber(row['Stock mínimo'], 5),
+        ubicacionId: parseString(row['Ubicación ID']) || null,
+        activo: true,
+      };
+
+      conflicts.push({
+        row: rowNum,
+        type: conflictType,
+        existing: {
+          id: existing.id,
+          codigoBarras: existing.codigoBarras,
+          plu: existing.plu,
+          nombre: existing.nombre,
+          stockActual: existing.stockActual,
+          precioVenta: existing.precioVenta,
+        },
+        importData,
+        resolution: 'skip', // default: skip duplicates
+      });
+
+      // Don't add to productos if conflict - user must resolve
+      return;
+    }
+
     productos.push({
       plu,
       codigoBarras,
@@ -88,10 +155,10 @@ function workbookToProductos(wb: any): ImportResult {
     });
   });
 
-  return { productos, errors };
+  return { productos, errors, conflicts };
 }
 
-export async function importProductosFromFile(file: File): Promise<ImportResult> {
+export async function importProductosFromFile(file: File, existingProducts: Producto[] = []): Promise<ImportResult> {
   const xlsx = await getXLSX();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -99,7 +166,7 @@ export async function importProductosFromFile(file: File): Promise<ImportResult>
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb = xlsx.read(data, { type: 'array' });
-        resolve(workbookToProductos(wb));
+        resolve(workbookToProductos(wb, existingProducts));
       } catch (err) {
         reject(err);
       }

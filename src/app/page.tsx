@@ -70,7 +70,8 @@ export default function Dashboard() {
   const [ultimosEscaneos, setUltimosEscaneos] = useState<Array<{ id: string; codigo: string; nombreProducto?: string; imagen?: string | null; productoId?: string | null; createdAt: number }>>([]);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<{ productos: any[]; errors: any[] } | null>(null);
+  const [importPreview, setImportPreview] = useState<{ productos: any[]; errors: any[]; conflicts: any[] } | null>(null);
+  const [conflictResolutions, setConflictResolutions] = useState<Record<number, 'skip' | 'update' | 'create_new'>>({});
   const [importLoading, setImportLoading] = useState(false);
   const [buscadorOpen, setBuscadorOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -202,24 +203,53 @@ export default function Dashboard() {
   const previewImport = async (file: File) => {
     try {
       const { importProductosFromFile } = await import('@/lib/excel');
-      const result = await importProductosFromFile(file);
+      // Get existing products for conflict detection
+      const existingProducts = await dbProductos.listar({ limite: 10000 });
+      const result = await importProductosFromFile(file, existingProducts.items);
       setImportPreview(result);
+      // Initialize default resolutions (skip by default)
+      const defaultResolutions: Record<number, 'skip' | 'update' | 'create_new'> = {};
+      result.conflicts.forEach(c => { defaultResolutions[c.row] = 'skip'; });
+      setConflictResolutions(defaultResolutions);
     } catch (err: any) {
       mostrarToast('error', 'Error leyendo archivo: ' + err.message);
     }
   };
 
   const confirmImport = async () => {
-    if (!importPreview || importPreview.productos.length === 0) return;
+    if (!importPreview || (importPreview.productos.length === 0 && importPreview.conflicts.length === 0)) return;
     setImportLoading(true);
     try {
+      // Import new products (no conflicts)
       for (const p of importPreview.productos) {
         await dbProductos.crear(p);
       }
-      mostrarToast('exito', `${importPreview.productos.length} productos importados`);
+      
+      // Handle conflicts based on resolution
+      for (const conflict of importPreview.conflicts) {
+        const resolution = conflictResolutions[conflict.row] || 'skip';
+        
+        if (resolution === 'skip') {
+          continue; // Skip this row
+        } else if (resolution === 'update') {
+          // Update existing product with new data
+          const updateData = {
+            ...conflict.importData,
+            stockActual: conflict.importData.stockActual + conflict.existing.stockActual, // Sum stock
+          };
+          await dbProductos.actualizar(conflict.existing.id, updateData);
+        } else if (resolution === 'create_new') {
+          // Create as new product (force new EAN/PLU)
+          await dbProductos.crear(conflict.importData);
+        }
+      }
+      
+      const totalImported = importPreview.productos.length + importPreview.conflicts.filter(c => conflictResolutions[c.row] !== 'skip').length;
+      mostrarToast('exito', `${totalImported} productos importados`);
       setImportModalOpen(false);
       setImportFile(null);
       setImportPreview(null);
+      setConflictResolutions({});
       router.refresh();
     } catch (err: any) {
       mostrarToast('error', 'Error importando: ' + err.message);
@@ -509,12 +539,108 @@ export default function Dashboard() {
                     <div className={`summary-item ${importPreview.errors.length > 0 ? 'warn' : 'ok'}`}>
                       <span>{importPreview.productos.length} productos válidos</span>
                     </div>
+                    {importPreview.conflicts && importPreview.conflicts.length > 0 && (
+                      <div className="summary-item warn">
+                        <span>{importPreview.conflicts.length} conflictos (duplicados EAN/PLU)</span>
+                      </div>
+                    )}
                     {importPreview.errors.length > 0 && (
                       <div className="summary-item error">
                         <span>{importPreview.errors.length} errores</span>
                       </div>
                     )}
                   </div>
+                  {importPreview.errors.length > 0 && (
+                    <details className="errors-list">
+                      <summary>Ver errores ({importPreview.errors.length})</summary>
+                      <ul>
+                        {importPreview.errors.map((err, i) => (
+                          <li key={i}>Fila {err.row}: {err.message}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  {importPreview.conflicts && importPreview.conflicts.length > 0 && (
+                    <details className="errors-list" style={{ marginTop: 8 }} open>
+                      <summary style={{ color: 'var(--warn)' }}>Ver conflictos ({importPreview.conflicts.length})</summary>
+                      <ul style={{ marginTop: 8 }}>
+                        {importPreview.conflicts.map((c, i) => (
+                          <li key={i} style={{ 
+                            background: 'var(--surface-low)', 
+                            padding: '12px', 
+                            borderRadius: 'var(--r-lg)',
+                            marginBottom: '8px',
+                            border: '1px solid var(--line-soft)'
+                          }}>
+                            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                              Fila {c.row}: <strong>{c.importData.nombre}</strong>
+                              <span style={{ color: 'var(--text-faint)', fontWeight: 400, marginLeft: 8 }}>
+                                ({c.type === 'both' ? 'EAN + PLU' : c.type === 'ean' ? 'EAN' : 'PLU'} duplicado)
+                              </span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8, fontSize: '.85rem' }}>
+                              <div>
+                                <span style={{ color: 'var(--text-faint)' }}>Existente: </span>
+                                <span>{c.existing.nombre}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>EAN: </span>
+                                <span>{c.existing.codigoBarras || '—'}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>PLU: </span>
+                                <span>{c.existing.plu || '—'}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>Stock: </span>
+                                <span>{c.existing.stockActual}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>P. venta: </span>
+                                <span>{formatMoney(c.existing.precioVenta)}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-faint)' }}>A importar: </span>
+                                <span>{c.importData.nombre}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>EAN: </span>
+                                <span>{c.importData.codigoBarras || '—'}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>PLU: </span>
+                                <span>{c.importData.plu || '—'}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>Stock: </span>
+                                <span>{c.importData.stockActual}</span><br/>
+                                <span style={{ color: 'var(--text-faint)' }}>P. venta: </span>
+                                <span>{formatMoney(c.importData.precioVenta)}</span>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <label style={{ flex: 1 }}>
+                                <input 
+                                  type="radio" 
+                                  name={`conflict-${c.row}`}
+                                  value="skip"
+                                  checked={conflictResolutions[c.row] === 'skip'}
+                                  onChange={() => setConflictResolutions({...conflictResolutions, [c.row]: 'skip'})}
+                                />
+                                <span style={{ marginLeft: 6, fontSize: '.8rem' }}>⏭ Saltar</span>
+                              </label>
+                              <label style={{ flex: 1 }}>
+                                <input 
+                                  type="radio" 
+                                  name={`conflict-${c.row}`}
+                                  value="update"
+                                  checked={conflictResolutions[c.row] === 'update'}
+                                  onChange={() => setConflictResolutions({...conflictResolutions, [c.row]: 'update'})}
+                                />
+                                <span style={{ marginLeft: 6, fontSize: '.8rem' }}>🔄 Actualizar (suma stock)</span>
+                              </label>
+                              <label style={{ flex: 1 }}>
+                                <input 
+                                  type="radio" 
+                                  name={`conflict-${c.row}`}
+                                  value="create_new"
+                                  checked={conflictResolutions[c.row] === 'create_new'}
+                                  onChange={() => setConflictResolutions({...conflictResolutions, [c.row]: 'create_new'})}
+                                />
+                                <span style={{ marginLeft: 6, fontSize: '.8rem' }}>➕ Crear nuevo</span>
+                              </label>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   {importPreview.errors.length > 0 && (
                     <details className="errors-list">
                       <summary>Ver errores ({importPreview.errors.length})</summary>
