@@ -62,6 +62,17 @@ const ZBAR_FORMAT_MAP: Record<number, string> = {
   128: 'code_128',
 };
 
+const MAX_LOW_END_W = 480;
+const MAX_LOW_END_H = 360;
+
+let _zbarDetectorPromise: Promise<BarcodeDetector | null> | null = null;
+
+function getZbarDetector(): Promise<BarcodeDetector | null> {
+  if (_zbarDetectorPromise) return _zbarDetectorPromise;
+  _zbarDetectorPromise = createZbarDetector(true);
+  return _zbarDetectorPromise;
+}
+
 async function createZbarDetector(lowEnd: boolean = false): Promise<BarcodeDetector | null> {
   if (typeof window === 'undefined') return null;
 
@@ -236,3 +247,32 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
 
   return { detect, startZXing, stop, useNative };
 }
+
+// Función standalone para burst mode (photo capture) en low-end
+// No usa React hooks, se puede llamar desde cualquier componente
+export async function detectFromVideoFrame(video: HTMLVideoElement): Promise<BarcodeResult[]> {
+  if (typeof window === 'undefined') return [];
+  if (!video || video.readyState < 2) return [];
+
+  try {
+    const detector = await getZbarDetector();
+    if (!detector) return [];
+
+    const bitmap = await createImageBitmap(video);
+    
+    // El detector ya hace downscale interno a 480x360
+    const results = await detector.detect(bitmap);
+    
+    if (!bitmap.close) {
+      bitmap.close?.();
+    }
+
+    return results.map((r) => ({ rawValue: r.rawValue, format: r.format }));
+  } catch (err) {
+    console.warn('[Burst] detectFromVideoFrame error:', err);
+    return [];
+  }
+}
+
+// Formatos EAN/UPC que consideramos "válidos" para auto-aceptar en burst
+export const BURST_VALID_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];

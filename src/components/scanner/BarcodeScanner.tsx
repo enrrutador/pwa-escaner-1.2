@@ -8,7 +8,7 @@ import {
   forwardRef,
   useCallback,
 } from 'react';
-import { useBarcodeDetector } from '@/hooks/useBarcodeDetector';
+import { useBarcodeDetector, detectFromVideoFrame, BURST_VALID_FORMATS } from '@/hooks/useBarcodeDetector';
 
 export interface BarcodeScannerProps {
   onScan: (codigo: string, formato: string) => void;
@@ -24,6 +24,10 @@ export interface BarcodeScannerHandle {
 }
 
 type CameraState = 'idle' | 'active' | 'denied' | 'error';
+type BurstState = 'idle' | 'capturing' | 'processing';
+
+const BURST_FRAMES = 6;
+const BURST_INTERVAL_MS = 120;
 
 function matarStream(stream: MediaStream | null) {
   if (!stream) return;
@@ -72,6 +76,11 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const [torchAvailable, setTorchAvailable] = useState(false);
 
     const lowEnd = esGamaBaja();
+
+    // Burst mode state (solo low-end Android)
+    const [burstState, setBurstState] = useState<BurstState>('idle');
+    const [burstProgress, setBurstProgress] = useState(0);
+    const burstAbortRef = useRef(false);
 
     const { detect, startZXing, stop: stopEngine, useNative } = useBarcodeDetector({
       onDetect: useCallback((results) => {
@@ -132,7 +141,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       stopEngine();
       if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
       if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
-      // No deshabilitamos tracks para mantener foco continuo en iPhone
       if (mountedRef.current) setCameraState('idle');
     }, [stopEngine]);
 
@@ -151,6 +159,65 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (mountedRef.current) setCameraState('idle');
     }, [stopEngine]);
 
+    // Burst mode: captura N frames consecutivos y procesa con ZBar
+    const iniciarBurst = useCallback(async () => {
+      if (!lowEnd || burstState !== 'idle') return;
+      if (!videoRef.current || videoRef.current.readyState < 2) return;
+
+      burstAbortRef.current = false;
+      setBurstState('capturing');
+      setBurstProgress(0);
+
+      try {
+        const video = videoRef.current;
+        const validFormats = new Set(BURST_VALID_FORMATS);
+
+        for (let i = 0; i < BURST_FRAMES; i++) {
+          if (burstAbortRef.current || !mountedRef.current) break;
+          
+          setBurstProgress(i + 1);
+          
+          const results = await detectFromVideoFrame(video);
+          
+          for (const r of results) {
+            const codigo = r.rawValue?.trim();
+            const formato = r.format;
+            if (!codigo || codigo.length < 4) continue;
+            if (!validFormats.has(formato)) continue;
+            
+            const ahora = Date.now();
+            if (codigo === lastScanRef.current.code && ahora - lastScanRef.current.time < cooldownMs) continue;
+            
+            lastScanRef.current = { code: codigo, time: ahora };
+            if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+            
+            setBurstState('idle');
+            setBurstProgress(0);
+            onScan(codigo, formato);
+            return;
+          }
+
+          // Pequeña pausa entre frames
+          if (i < BURST_FRAMES - 1) {
+            await new Promise(r => setTimeout(r, BURST_INTERVAL_MS));
+          }
+        }
+      } catch (err) {
+        console.warn('[Burst] Error:', err);
+      } finally {
+        if (mountedRef.current) {
+          setBurstState('idle');
+          setBurstProgress(0);
+        }
+      }
+    }, [lowEnd, burstState, cooldownMs, onScan]);
+
+    const cancelarBurst = useCallback(() => {
+      burstAbortRef.current = true;
+      setBurstState('idle');
+      setBurstProgress(0);
+    }, []);
+
     const inicializar = useCallback(async () => {
       if (!mountedRef.current) return;
       if (cameraState === 'active') return;
@@ -167,7 +234,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
-const videoConstraints: any = lowEnd
+      const videoConstraints: any = lowEnd
         ? { facingMode: { ideal: 'environment' }, width: { ideal: 640, min: 480, max: 800 }, height: { ideal: 480, min: 360, max: 600 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, focusMode: 'continuous' };
 
@@ -231,8 +298,9 @@ const videoConstraints: any = lowEnd
         if (mountedRef.current) inicializar();
       } else {
         pausarDecodificacion();
+        cancelarBurst();
       }
-    }, [activo, inicializar, pausarDecodificacion]);
+    }, [activo, inicializar, pausarDecodificacion, cancelarBurst]);
 
     useEffect(() => {
       mountedRef.current = true;
@@ -246,6 +314,7 @@ const videoConstraints: any = lowEnd
       const handler = () => {
         if (document.hidden) {
           pausarDecodificacion();
+          cancelarBurst();
         } else if (activo && streamRef.current) {
           setTimeout(() => {
             if (mountedRef.current && activo) inicializar();
@@ -254,7 +323,7 @@ const videoConstraints: any = lowEnd
       };
       document.addEventListener('visibilitychange', handler);
       return () => document.removeEventListener('visibilitychange', handler);
-    }, [activo, pausarDecodificacion, inicializar]);
+    }, [activo, pausarDecodificacion, inicializar, cancelarBurst]);
 
     useEffect(() => {
       if (cameraState === 'active' && onReady) onReady();
@@ -293,7 +362,7 @@ const videoConstraints: any = lowEnd
         <div className="corner bl" />
         <div className="corner br" />
         {!lowEnd && <div className="laser" />}
-        {cameraState === 'active' && (
+        {cameraState === 'active' && burstState === 'idle' && (
           <div className="scan-hint">
             <span>Alineá el código de barras dentro del marco</span>
           </div>
@@ -308,7 +377,67 @@ const videoConstraints: any = lowEnd
             {getModeBadge()}
           </div>
         )}
+        {burstState === 'capturing' && (
+          <div style={{
+            position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+            background: 'rgba(0,0,0,0.85)', color: '#fff',
+            padding: '8px 16px', borderRadius: 8, fontSize: '13px',
+            fontFamily: 'monospace', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8
+          }}>
+            <span style={{width: 80, textAlign: 'right'}}>{burstProgress}/{BURST_FRAMES}</span>
+            <div style={{width: 120, height: 4, background: '#333', borderRadius: 2, overflow: 'hidden'}}>
+              <div style={{
+                width: `${(burstProgress / BURST_FRAMES) * 100}%`, height: '100%',
+                background: '#FFC107', transition: 'width 100ms linear'
+              }} />
+            </div>
+          </div>
+        )}
+        {burstState === 'processing' && (
+          <div style={{
+            position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+            background: 'rgba(0,0,0,0.85)', color: '#fff',
+            padding: '8px 16px', borderRadius: 8, fontSize: '13px',
+            fontFamily: 'monospace', fontWeight: 600
+          }}>
+            Procesando…
+          </div>
+        )}
       </div>
+    );
+
+    // Botón de captura burst (solo low-end, cámara activa, no en burst)
+    const burstButton = lowEnd && cameraState === 'active' && burstState === 'idle' && (
+      <button
+        onClick={iniciarBurst}
+        style={{
+          position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
+          width: 72, height: 72, borderRadius: '50%',
+          background: '#FFC107', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        aria-label="Capturar código"
+      >
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="4" />
+        </svg>
+      </button>
+    );
+
+    // Botón cancelar burst
+    const cancelButton = (burstState === 'capturing' || burstState === 'processing') && (
+      <button
+        onClick={cancelarBurst}
+        style={{
+          position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
+          padding: '10px 20px', borderRadius: 8,
+          background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff',
+          fontSize: '13px', fontWeight: 600,
+        }}
+      >
+        Cancelar
+      </button>
     );
 
     return (
@@ -322,6 +451,8 @@ const videoConstraints: any = lowEnd
         />
 
         {activo && viewfinderUI}
+        {burstButton}
+        {cancelButton}
 
         {cameraState === 'denied' && (
           <div className="absolute inset-0 z-20 grid place-items-center bg-black/90">
