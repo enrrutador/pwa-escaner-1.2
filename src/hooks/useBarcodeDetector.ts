@@ -46,11 +46,6 @@ function getZxingFormats(BarcodeFormat: Record<string, unknown>): unknown[] {
   return _zxingFormatsCache;
 }
 
-interface ZXingResult {
-  getText(): string;
-  getBarcodeFormat(): number | string;
-}
-
 export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
@@ -66,34 +61,51 @@ export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
     const init = async () => {
       if (typeof window === 'undefined') return;
       
+      // Detect native BarcodeDetector (Chrome Android = ML Kit, fast & reliable)
       if ('BarcodeDetector' in window) {
         try {
-          const supported = await window.BarcodeDetector.getSupportedFormats();
-          const supportedSet = new Set(supported.map((f) => f.toLowerCase().replace(/_/g, '')));
-          const available = TARGET_FORMATS.filter((f) => supportedSet.has(f));
-          if (available.length > 0) {
-            nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
-            setUseNative(true);
-            return;
+          // Try to get supported formats; if it fails or returns empty, gracefully fallback
+          let available = TARGET_FORMATS;
+          try {
+            const supported = await window.BarcodeDetector.getSupportedFormats();
+            if (Array.isArray(supported) && supported.length > 0) {
+              const supportedSet = new Set(supported.map((f: string) => f.toLowerCase().replace(/_/g, '')));
+              const filtered = TARGET_FORMATS.filter((f) => supportedSet.has(f));
+              if (filtered.length > 0) available = filtered;
+            }
+          } catch {
+            // getSupportedFormats failed - just use all targets
           }
-        } catch {}
+          
+          nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
+          setUseNative(true);
+          console.log('[Scanner] Using native BarcodeDetector with formats:', available);
+          return;
+        } catch (err) {
+          console.warn('[Scanner] Native BarcodeDetector init failed:', err);
+        }
       }
       
-      // No native BarcodeDetector (iPhone Safari) - will use ZXing
       setUseNative(false);
+      console.log('[Scanner] Native BarcodeDetector unavailable, will use ZXing fallback');
     };
     init();
     return () => { mountedRef.current = false; };
   }, []);
 
-  const detect = useCallback(async (source: ImageBitmapSource) => {
+  const detect = useCallback(async (source: HTMLVideoElement) => {
     if (!useNative || !nativeDetectorRef.current) return;
+    // Only attempt detection when video has enough data
+    const HAVE_ENOUGH_DATA = 4;
+    if (source.readyState < HAVE_ENOUGH_DATA) return;
     try {
       const results = await nativeDetectorRef.current.detect(source);
-      if (results.length > 0) {
+      if (results.length > 0 && mountedRef.current) {
         onDetectRef.current(results.map((r) => ({ rawValue: r.rawValue, format: r.format })));
       }
-    } catch {}
+    } catch (err) {
+      // ignore - frame may be transient
+    }
   }, [useNative]);
 
   const startZXing = useCallback(async (video: HTMLVideoElement) => {

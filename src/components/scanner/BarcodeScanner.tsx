@@ -132,7 +132,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
       const videoConstraints: any = {
         facingMode: { ideal: 'environment' },
-        focusMode: 'continuous',
       };
 
       if (isIOS) {
@@ -158,6 +157,12 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         if (track) {
           const caps = track.getCapabilities() as any;
           setTorchAvailable(!!caps?.torch);
+          // focusMode es una capability avanzada, se aplica vía applyConstraints
+          if (caps?.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+            try {
+              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
+            } catch {}
+          }
         }
 
         if (!mountedRef.current) { matarStream(stream); return; }
