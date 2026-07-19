@@ -52,37 +52,123 @@ interface ZXingResult {
   getBarcodeFormat(): number | string;
 }
 
+const ZBAR_FORMAT_MAP: Record<number, string> = {
+  8: 'ean_8',
+  13: 'ean_13',
+  9: 'upc_e',
+  12: 'upc_a',
+  25: 'itf',
+  39: 'code_39',
+  128: 'code_128',
+};
+
+async function createZbarDetector(): Promise<BarcodeDetector | null> {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const { scanRGBABuffer, setModuleArgs } = await import('@undecaf/zbar-wasm');
+
+    setModuleArgs({
+      locateFile: (path: string) => {
+        if (path.endsWith('.wasm')) return '/zbar/zbar.wasm';
+        return path;
+      },
+    });
+
+    const supportedFormats = Object.values(ZBAR_FORMAT_MAP);
+
+    const detector: BarcodeDetector = {
+      async detect(source: ImageBitmapSource) {
+        let bitmap: ImageBitmap;
+        if (source instanceof ImageBitmap) {
+          bitmap = source;
+        } else if (source instanceof HTMLVideoElement || source instanceof HTMLImageElement || source instanceof HTMLCanvasElement) {
+          bitmap = await createImageBitmap(source);
+        } else {
+          throw new Error('Unsupported source type');
+        }
+
+        const width = bitmap.width;
+        const height = bitmap.height;
+        const pixelData = new Uint8Array(width * height * 4);
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(bitmap, 0, 0);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        pixelData.set(imageData.data);
+
+        const results = await scanRGBABuffer(pixelData.buffer, width, height);
+        
+        if (!bitmap.close) {
+          bitmap.close?.();
+        }
+
+        return results
+          .map((r) => ({
+            rawValue: typeof r.data === 'string' ? r.data : new TextDecoder().decode(r.data),
+            format: ZBAR_FORMAT_MAP[r.type] || `unknown_${r.type}`,
+            cornerPoints: undefined,
+            boundingBox: undefined,
+          }))
+          .filter((r) => TARGET_FORMATS.includes(r.format));
+      },
+    };
+
+    Object.defineProperty(detector, 'getSupportedFormats', {
+      value: async () => supportedFormats,
+      writable: false,
+      configurable: false,
+    });
+
+    return detector;
+  } catch (err) {
+    console.warn('[ZBar] Failed to initialize:', err);
+    return null;
+  }
+}
+
 export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
   const onDetectRef = useRef(onDetect);
   const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
   const zxingReaderRef = useRef<{ decodeFromCanvas: Function } | null>(null);
   const zxingRunningRef = useRef(false);
-  const quaggaStartedRef = useRef(false);
   const mountedRef = useRef(true);
 
   useEffect(() => { onDetectRef.current = onDetect; }, [onDetect]);
 
-  // Inicializar BarcodeDetector nativo
   useEffect(() => {
     mountedRef.current = true;
     const init = async () => {
       if (typeof window === 'undefined') return;
-      if (!('BarcodeDetector' in window)) return;
-      try {
-        const supported = await window.BarcodeDetector.getSupportedFormats();
-        const supportedSet = new Set(supported.map((f) => f.toLowerCase().replace(/_/g, '')));
-        const available = TARGET_FORMATS.filter((f) => supportedSet.has(f));
-        if (available.length === 0) return;
-        nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
-        setUseNative(true);
-      } catch {}
+
+      if ('BarcodeDetector' in window) {
+        try {
+          const supported = await window.BarcodeDetector.getSupportedFormats();
+          const supportedSet = new Set(supported.map((f) => f.toLowerCase().replace(/_/g, '')));
+          const available = TARGET_FORMATS.filter((f) => supportedSet.has(f));
+          if (available.length === 0) return;
+          nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
+          setUseNative(true);
+          return;
+        } catch {}
+      }
+
+      if (lowEnd) {
+        const detector = await createZbarDetector();
+        if (detector) {
+          nativeDetectorRef.current = detector;
+          setUseNative(true);
+        }
+      }
     };
     init();
     return () => { mountedRef.current = false; };
-  }, []);
+  }, [lowEnd]);
 
-  // Nativo: detect (recibe ImageBitmap del crop o video)
   const detect = useCallback(async (source: ImageBitmapSource) => {
     if (!useNative || !nativeDetectorRef.current) return;
     try {
@@ -93,7 +179,6 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
     } catch {}
   }, [useNative]);
 
-  // ZXing (iPhone / gama alta) — loop manual con decodeOnceFromVideoElement
   const startZXing = useCallback(async (video: HTMLVideoElement) => {
     if (useNative || zxingRunningRef.current) return;
     if (!video || video.readyState < 2) return;
@@ -126,7 +211,6 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
       } catch {}
 
       if (!mountedRef.current || !zxingRunningRef.current) return;
-      // Throttle: 500ms gama alta (iPhone), 800ms gama baja
       const delay = lowEnd ? 800 : 500;
       setTimeout(scanLoop, delay);
     };
@@ -134,72 +218,10 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
     scanLoop();
   }, [useNative, lowEnd]);
 
-  // Quagga2 (gama baja Android, cuando no hay BarcodeDetector nativo)
-  const startQuagga = useCallback(async (video: HTMLVideoElement) => {
-    if (useNative || quaggaStartedRef.current) return;
-    if (!video || video.readyState < 2) return;
-    quaggaStartedRef.current = true;
-
-    const Quagga = (await import('@ericblade/quagga2')).default;
-
-    Quagga.init({
-      inputStream: {
-        type: 'LiveStream',
-        target: video,
-        constraints: {
-          width: 640,
-          height: 480,
-          facingMode: 'environment',
-        },
-      },
-      locator: {
-        patchSize: 'medium',
-        halfSample: true,
-      },
-      numOfWorkers: 0,
-      frequency: 5,
-      decoder: {
-        readers: [
-          'ean_reader', 'ean_8_reader',
-          'upc_reader', 'upc_e_reader',
-          'code_128_reader', 'code_39_reader',
-          'i2of5_reader',
-        ],
-      },
-      locate: true,
-    }, (err: any) => {
-      if (err) {
-        console.error('[Quagga2] init error:', err);
-        return;
-      }
-      if (!mountedRef.current) {
-        Quagga.stop();
-        return;
-      }
-      Quagga.onDetected((result: any) => {
-        if (!result || !mountedRef.current) return;
-        const codigo = result.codeResult?.code;
-        const formato = result.codeResult?.format || 'UNKNOWN';
-        if (codigo && codigo.length >= 4) {
-          onDetectRef.current([{ rawValue: codigo, format: String(formato) }]);
-        }
-      });
-      Quagga.start();
-    });
-  }, [useNative]);
-
   const stop = useCallback(() => {
-    // ZXing
     zxingRunningRef.current = false;
     zxingReaderRef.current = null;
-    // Quagga2
-    if (quaggaStartedRef.current) {
-      quaggaStartedRef.current = false;
-      import('@ericblade/quagga2').then((Quagga) => {
-        try { Quagga.default.stop(); } catch {}
-      });
-    }
   }, []);
 
-  return { detect, startZXing, startQuagga, stop, useNative };
+  return { detect, startZXing, stop, useNative };
 }

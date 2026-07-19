@@ -45,7 +45,6 @@ function esGamaBaja(): boolean {
   const hw = navigator.hardwareConcurrency;
   const mem = (navigator as any).deviceMemory;
   
-  // Debug logging
   console.log('[Scanner] Device detection:', { 
     ua, 
     hardwareConcurrency: hw, 
@@ -74,11 +73,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
     const lowEnd = esGamaBaja();
 
-    // Debug: mostrar indicador visual del modo
-    const [showDebug, setShowDebug] = useState(false);
-
-    // 3 motores: BarcodeDetector nativo > ZXing (iPhone/gama alta) > Quagga2 (gama baja Android)
-    const { detect, startZXing, startQuagga, stop: stopEngine, useNative } = useBarcodeDetector({
+    const { detect, startZXing, stop: stopEngine, useNative } = useBarcodeDetector({
       onDetect: useCallback((results) => {
         if (!mountedRef.current) return;
         for (const r of results) {
@@ -96,7 +91,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       lowEnd,
     });
 
-    // Arranca el engine de detección cuando la cámara está activa
     const scanLoopRef = useRef<number | null>(null);
     const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -109,7 +103,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (!videoRef.current) return;
 
       if (useNative) {
-        // Motor 1: BarcodeDetector nativo (Android Chrome moderno, iPhone no)
         if (lowEnd) {
           const tick = async () => {
             if (!mountedRef.current || !videoRef.current || videoRef.current.paused) return;
@@ -125,11 +118,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           };
           scanLoopRef.current = requestAnimationFrame(loop);
         }
-      } else if (lowEnd) {
-        // Motor 3: Quagga2 (gama baja Android sin BarcodeDetector)
-        startQuagga(videoRef.current);
       } else {
-        // Motor 2: ZXing (iPhone / gama alta sin BarcodeDetector)
         startZXing(videoRef.current);
       }
 
@@ -137,7 +126,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
         if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
       };
-    }, [cameraState, useNative, detect, startZXing, startQuagga, lowEnd]);
+    }, [cameraState, useNative, detect, startZXing, lowEnd]);
 
     const pausarDecodificacion = useCallback(() => {
       stopEngine();
@@ -168,7 +157,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       if (!mountedRef.current) return;
       if (cameraState === 'active') return;
 
-      // Reusar stream existente (iOS no pide permiso de nuevo)
       if (streamRef.current) {
         const stream = streamRef.current;
         stream.getTracks().forEach(t => { t.enabled = true; });
@@ -181,9 +169,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
-      // Resolución: 640x480 gama baja, 1280x720 gama alta/iPhone
       const videoConstraints: any = lowEnd
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640, min: 480 }, height: { ideal: 480, min: 360 }, focusMode: 'continuous' }
+        ? { facingMode: { ideal: 'environment' }, width: { exact: 640 }, height: { exact: 480 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, focusMode: 'continuous' };
 
       if (esIOS()) {
@@ -213,7 +200,6 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
         if (!mountedRef.current) { matarStream(stream); return; }
 
-        // Esperar a que el video esté reproduciendo
         await new Promise<void>((resolve) => {
           const v = videoRef.current;
           if (!v) { resolve(); return; }
@@ -294,6 +280,12 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       apagarCamara: apagarCamaraCompleto,
     }), [alternarTorch, torchAvailable, apagarCamaraCompleto]);
 
+    const getModeBadge = () => {
+      if (useNative && lowEnd) return '🟡 POLYFILL WASM';
+      if (useNative) return '🟢 NATIVO';
+      return '🔵 ZXING';
+    };
+
     const viewfinderUI = (
       <div className="viewfinder">
         <div className="corner tl" />
@@ -313,7 +305,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
             padding: '2px 8px', borderRadius: 4, fontSize: '10px',
             fontFamily: 'monospace', fontWeight: 600
           }}>
-            {useNative ? '🟢 NATIVO' : '🟡 QUAGGA2'}
+            {getModeBadge()}
           </div>
         )}
       </div>
