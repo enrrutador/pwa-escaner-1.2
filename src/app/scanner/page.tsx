@@ -36,19 +36,22 @@ function ScannerInner() {
   const onScan = useCallback(async (codigo: string, _formato: string) => {
     if (buscando) return;
 
-    setEscaneado(codigo);
+    // Limpiar el código: solo dígitos para EAN/UPC
+    const codigoLimpio = codigo.trim().replace(/[^0-9]/g, '');
+
+    setEscaneado(codigoLimpio);
     setActivo(false);
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 300);
     setBuscando(true);
 
     try {
-      const producto = await dbProductos.obtenerPorCodigoBarras(codigo)
-        || await dbProductos.obtenerPorPlu(codigo);
+      const producto = await dbProductos.obtenerPorCodigoBarras(codigoLimpio)
+        || await dbProductos.obtenerPorPlu(codigoLimpio);
 
       if (producto) {
         await dbEscaneos.registrar({
-          codigo, origen: 'camara', resultado: 'encontrado',
+          codigo: codigoLimpio, origen: 'camara', resultado: 'encontrado',
           productoId: producto.id, nombreProducto: producto.nombre,
           imagen: producto.imagen ?? null,
         });
@@ -56,26 +59,26 @@ function ScannerInner() {
         return;
       }
 
-      const res = await fetch(`/api/buscar?q=${encodeURIComponent(codigo)}`);
+      const res = await fetch(`/api/buscar?q=${encodeURIComponent(codigoLimpio)}`);
       const data = await res.json();
       const externos = data.resultados || [];
 
       if (externos.length > 0) {
         const p = externos[0];
         await dbEscaneos.registrar({
-          codigo, origen: 'camara', resultado: 'encontrado',
+          codigo: codigoLimpio, origen: 'camara', resultado: 'encontrado',
           nombreProducto: p.nombre, imagen: p.imagen ?? null,
         });
         const params = new URLSearchParams({
-          cod: codigo, nom: p.nombre || '', img: p.imagen || '',
+          cod: codigoLimpio, nom: p.nombre || '', img: p.imagen || '',
           des: p.descripcion || '', pre: String(p.precio || ''), mar: p.marca || '',
         });
         router.push(`/inventario/nuevo?${params.toString()}`);
       } else {
         await dbEscaneos.registrar({
-          codigo, origen: 'camara', resultado: 'no_encontrado',
+          codigo: codigoLimpio, origen: 'camara', resultado: 'no_encontrado',
         });
-        router.push(`/inventario/nuevo?cod=${encodeURIComponent(codigo)}`);
+        router.push(`/inventario/nuevo?cod=${encodeURIComponent(codigoLimpio)}`);
       }
     } catch (e: any) {
       mostrarToast('error', 'Error: ' + e.message);
