@@ -168,7 +168,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       }
 
 const videoConstraints: any = lowEnd
-        ? { facingMode: { ideal: 'environment' }, width: { ideal: 480, min: 320, max: 640 }, height: { ideal: 360, min: 240, max: 480 }, focusMode: 'continuous' }
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 640, min: 480, max: 800 }, height: { ideal: 480, min: 360, max: 600 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, focusMode: 'continuous' };
 
       if (esIOS()) {
