@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { dbProductos } from '@/lib/db-productos';
+import { dbEscaneos } from '@/lib/db-escaneos';
 import { useUbicaciones } from '@/hooks/useUbicaciones';
 
 function stripHtml(html: string): string {
@@ -105,6 +106,16 @@ function NuevoProductoInner() {
         imagen: form.imagen || undefined,
         descripcion: form.descripcion || undefined,
       });
+      // Registrar escaneo si venía de un código escaneado
+      if (form.codigoBarras) {
+        await dbEscaneos.registrar({
+          codigo: form.codigoBarras,
+          origen: 'camara',
+          resultado: 'encontrado',
+          nombreProducto: form.nombre,
+          imagen: form.imagen || undefined,
+        });
+      }
       mostrarToast('exito', 'Producto creado');
       router.push('/inventario');
     } catch (e: any) {

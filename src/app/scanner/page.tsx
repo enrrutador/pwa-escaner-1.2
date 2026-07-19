@@ -65,19 +65,14 @@ function ScannerInner() {
 
       if (externos.length > 0) {
         const p = externos[0];
-        await dbEscaneos.registrar({
-          codigo: codigoLimpio, origen: 'camara', resultado: 'encontrado',
-          nombreProducto: p.nombre, imagen: p.imagen ?? null,
-        });
+        // NO registrar escaneo aquí - solo se registra si se GUARDA el producto en /inventario/nuevo
         const params = new URLSearchParams({
           cod: codigoLimpio, nom: p.nombre || '', img: p.imagen || '',
           des: p.descripcion || '', pre: String(p.precio || ''), mar: p.marca || '',
         });
         router.push(`/inventario/nuevo?${params.toString()}`);
       } else {
-        await dbEscaneos.registrar({
-          codigo: codigoLimpio, origen: 'camara', resultado: 'no_encontrado',
-        });
+        // NO registrar "no_encontrado" - el usuario puede cancelar en nuevo producto
         router.push(`/inventario/nuevo?cod=${encodeURIComponent(codigoLimpio)}`);
       }
     } catch (e: any) {
