@@ -4,12 +4,12 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 
 declare global {
   interface Window {
-    BarcodeDetector: {
-      new (options?: { formats?: string[] }): BarcodeDetector;
+    BarcodeDetector?: {
+      new (options?: { formats?: string[] }): BarcodeDetectorInstance;
       getSupportedFormats(): Promise<string[]>;
     };
   }
-  interface BarcodeDetector {
+  interface BarcodeDetectorInstance {
     detect(source: ImageBitmapSource): Promise<DetectedBarcode[]>;
   }
   interface DetectedBarcode {
@@ -29,13 +29,10 @@ interface UseBarcodeDetectorOptions {
   onDetect: (results: BarcodeResult[]) => void;
 }
 
-const TARGET_FORMATS = [
-  'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf',
-];
+// Mismo set que M-Scanner: solo EAN + UPC (rápido y específico)
+const TARGET_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
 
-const ZXING_FORMAT_KEYS = [
-  'EAN_13', 'EAN_8', 'UPC_A', 'UPC_E', 'CODE_128', 'CODE_39', 'QR_CODE',
-];
+const ZXING_FORMAT_KEYS = ['EAN_13', 'EAN_8', 'UPC_A', 'UPC_E'];
 
 let _zxingFormatsCache: unknown[] | null = null;
 function getZxingFormats(BarcodeFormat: Record<string, unknown>): unknown[] {
@@ -48,8 +45,9 @@ function getZxingFormats(BarcodeFormat: Record<string, unknown>): unknown[] {
 
 export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
   const [useNative, setUseNative] = useState(false);
+  const [ready, setReady] = useState(false);
   const onDetectRef = useRef(onDetect);
-  const nativeDetectorRef = useRef<BarcodeDetector | null>(null);
+  const nativeDetectorRef = useRef<BarcodeDetectorInstance | null>(null);
   const zxingReaderRef = useRef<{ decodeFromCanvas: Function } | null>(null);
   const zxingRunningRef = useRef(false);
   const mountedRef = useRef(true);
@@ -60,52 +58,48 @@ export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
     mountedRef.current = true;
     const init = async () => {
       if (typeof window === 'undefined') return;
-      
-      // Detect native BarcodeDetector (Chrome Android = ML Kit, fast & reliable)
-      if ('BarcodeDetector' in window) {
+
+      // Native BarcodeDetector (Chrome Android = ML Kit)
+      if (window.BarcodeDetector) {
         try {
-          // Try to get supported formats; if it fails or returns empty, gracefully fallback
-          let available = TARGET_FORMATS;
+          let formats = TARGET_FORMATS;
           try {
             const supported = await window.BarcodeDetector.getSupportedFormats();
             if (Array.isArray(supported) && supported.length > 0) {
-              const supportedSet = new Set(supported.map((f: string) => f.toLowerCase().replace(/_/g, '')));
-              const filtered = TARGET_FORMATS.filter((f) => supportedSet.has(f));
-              if (filtered.length > 0) available = filtered;
+              const filtered = TARGET_FORMATS.filter((f) => supported.includes(f));
+              if (filtered.length > 0) formats = filtered;
             }
-          } catch {
-            // getSupportedFormats failed - just use all targets
-          }
-          
-          nativeDetectorRef.current = new window.BarcodeDetector({ formats: available });
+          } catch {}
+
+          nativeDetectorRef.current = new window.BarcodeDetector({ formats });
           setUseNative(true);
-          console.log('[Scanner] Using native BarcodeDetector with formats:', available);
+          console.log('[Scanner] Native BarcodeDetector ready, formats:', formats);
+          setReady(true);
           return;
         } catch (err) {
           console.warn('[Scanner] Native BarcodeDetector init failed:', err);
         }
       }
-      
+
+      // No native → ZXing fallback (iPhone Safari)
       setUseNative(false);
-      console.log('[Scanner] Native BarcodeDetector unavailable, will use ZXing fallback');
+      setReady(true);
+      console.log('[Scanner] ZXing fallback will be used');
     };
     init();
     return () => { mountedRef.current = false; };
   }, []);
 
-  const detect = useCallback(async (source: HTMLVideoElement) => {
+  const detect = useCallback(async (video: HTMLVideoElement) => {
     if (!useNative || !nativeDetectorRef.current) return;
-    // Only attempt detection when video has enough data
-    const HAVE_ENOUGH_DATA = 4;
-    if (source.readyState < HAVE_ENOUGH_DATA) return;
+    // M-Scanner check: only detect when video has enough data
+    if (video.readyState !== 4) return;
     try {
-      const results = await nativeDetectorRef.current.detect(source);
+      const results = await nativeDetectorRef.current.detect(video);
       if (results.length > 0 && mountedRef.current) {
         onDetectRef.current(results.map((r) => ({ rawValue: r.rawValue, format: r.format })));
       }
-    } catch (err) {
-      // ignore - frame may be transient
-    }
+    } catch {}
   }, [useNative]);
 
   const startZXing = useCallback(async (video: HTMLVideoElement) => {
@@ -151,5 +145,5 @@ export function useBarcodeDetector({ onDetect }: UseBarcodeDetectorOptions) {
     zxingReaderRef.current = null;
   }, []);
 
-  return { detect, startZXing, stop, useNative };
+  return { detect, startZXing, stop, useNative, ready };
 }

@@ -52,7 +52,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
 
     const isIOS = esIOS();
 
-    const { detect, startZXing, stop: stopEngine, useNative } = useBarcodeDetector({
+    const { detect, startZXing, stop: stopEngine, useNative, ready } = useBarcodeDetector({
       onDetect: useCallback((results) => {
         if (!mountedRef.current) return;
         for (const r of results) {
@@ -72,27 +72,30 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     const scanLoopRef = useRef<number | null>(null);
 
     useEffect(() => {
-      if (cameraState !== 'active') {
+      // Esperar a que el motor esté listo ANTES de arrancar el loop
+      if (!ready || cameraState !== 'active') {
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
         return;
       }
       if (!videoRef.current) return;
 
       if (useNative) {
+        // Loop rAF nativo - igual que M-Scanner
         const loop = () => {
           if (!mountedRef.current || !videoRef.current) return;
-          detect(videoRef.current);
+          detect(videoRef.current); // detect ya chequea readyState === 4
           scanLoopRef.current = requestAnimationFrame(loop);
         };
         scanLoopRef.current = requestAnimationFrame(loop);
       } else {
+        // ZXing fallback (iPhone)
         startZXing(videoRef.current);
       }
 
       return () => {
         if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
       };
-    }, [cameraState, useNative, detect, startZXing]);
+    }, [ready, cameraState, useNative, detect, startZXing]);
 
     const pausarDecodificacion = useCallback(() => {
       stopEngine();
