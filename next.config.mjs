@@ -11,14 +11,6 @@ const nextConfig = {
     });
     return config;
   },
-  async rewrites() {
-    return [
-      {
-        source: '/zbar/:path*',
-        destination: '/zbar/:path*',
-      },
-    ];
-  },
 };
 
 export default nextConfig;
