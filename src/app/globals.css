@@ -87,16 +87,6 @@ input, select, textarea { font-family: inherit; }
   overflow: hidden;
   overflow-x: hidden;
 }
-@media (min-width: 520px) {
-  .app { 
-    position: relative;
-    max-width: 440px; 
-    margin: 24px auto; 
-    border-radius: 28px; 
-    height: min(920px, 100dvh);
-    box-shadow: 0 0 0 1px var(--line-soft), 0 40px 80px -20px oklch(8% 0.02 262);
-  }
-}
 
 /* --- Top bar --- */
 .topbar {
@@ -396,23 +386,14 @@ main {
 .fab:active { cursor: grabbing; transform: scale(.94); }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 12px oklch(62% 0.17 258 / .5), 0 8px 24px -6px oklch(62% 0.17 258 / .5); }
   50% { box-shadow: 0 0 26px oklch(62% 0.17 258 / .85), 0 8px 30px -4px oklch(62% 0.17 258 / .7); } }
-@media (min-width: 520px) { .fab { right: calc(50% - 220px + 20px); } }
 
 /* --- Bottom nav --- */
 .bottomnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
   width: 100%; max-width: 100%; margin: 0 auto; height: 76px;
   padding-bottom: max(0px, env(safe-area-inset-bottom));
   background: oklch(20% 0.032 262 / .92); backdrop-filter: blur(16px);
-  border-top: 1px solid var(--line-soft); border-radius: 16px 16px 0 0;
+  border-top: 1px solid var(--line-soft); border-radius: 0 0 0 0;
   display: flex; justify-content: space-around; align-items: center; padding: 0 8px; }
-@media (min-width: 520px) { 
-  .bottomnav { 
-    max-width: 440px; 
-    bottom: 24px; 
-    border-radius: 0 0 28px 28px; 
-    overflow: hidden; 
-  } 
-}
 .nav-btn { flex: 1; max-width: 80px; height: 54px; border-radius: var(--r-xl); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   color: var(--text-faint); transition: all .08s; }
 .nav-btn span { font-size: .66rem; font-weight: 600; letter-spacing: .06em; }
