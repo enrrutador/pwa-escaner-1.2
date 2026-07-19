@@ -62,8 +62,11 @@ const ZBAR_FORMAT_MAP: Record<number, string> = {
   128: 'code_128',
 };
 
-async function createZbarDetector(): Promise<BarcodeDetector | null> {
+async function createZbarDetector(lowEnd: boolean = false): Promise<BarcodeDetector | null> {
   if (typeof window === 'undefined') return null;
+
+  const MAX_LOW_END_W = 480;
+  const MAX_LOW_END_H = 360;
 
   try {
     const { scanRGBABuffer, setModuleArgs } = await import('@undecaf/zbar-wasm');
@@ -88,15 +91,23 @@ async function createZbarDetector(): Promise<BarcodeDetector | null> {
           throw new Error('Unsupported source type');
         }
 
-        const width = bitmap.width;
-        const height = bitmap.height;
+        let width = bitmap.width;
+        let height = bitmap.height;
+
+        // Downscale for low-end to speed up detection
+        if (lowEnd && (width > MAX_LOW_END_W || height > MAX_LOW_END_H)) {
+          const scale = Math.min(MAX_LOW_END_W / width, MAX_LOW_END_H / height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+
         const pixelData = new Uint8Array(width * height * 4);
         
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-        ctx.drawImage(bitmap, 0, 0);
+        ctx.drawImage(bitmap, 0, 0, width, height);
         const imageData = ctx.getImageData(0, 0, width, height);
         pixelData.set(imageData.data);
 
@@ -158,7 +169,7 @@ export function useBarcodeDetector({ onDetect, lowEnd = false }: UseBarcodeDetec
       }
 
       if (lowEnd) {
-        const detector = await createZbarDetector();
+        const detector = await createZbarDetector(lowEnd);
         if (detector) {
           nativeDetectorRef.current = detector;
           setUseNative(true);

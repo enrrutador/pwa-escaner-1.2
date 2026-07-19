@@ -107,9 +107,9 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
           const tick = async () => {
             if (!mountedRef.current || !videoRef.current || videoRef.current.paused) return;
             await detect(videoRef.current);
-            scanTimeoutRef.current = setTimeout(tick, 500);
+            scanTimeoutRef.current = setTimeout(tick, 300);
           };
-          scanTimeoutRef.current = setTimeout(tick, 500);
+          scanTimeoutRef.current = setTimeout(tick, 300);
         } else {
           const loop = () => {
             if (!mountedRef.current || !videoRef.current) return;
@@ -132,9 +132,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
       stopEngine();
       if (scanLoopRef.current) { cancelAnimationFrame(scanLoopRef.current); scanLoopRef.current = null; }
       if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => { t.enabled = false; });
-      }
+      // No deshabilitamos tracks para mantener foco continuo en iPhone
       if (mountedRef.current) setCameraState('idle');
     }, [stopEngine]);
 
@@ -169,8 +167,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         return;
       }
 
-      const videoConstraints: any = lowEnd
-        ? { facingMode: { ideal: 'environment' }, width: { exact: 640 }, height: { exact: 480 }, focusMode: 'continuous' }
+const videoConstraints: any = lowEnd
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 480, min: 320, max: 640 }, height: { ideal: 360, min: 240, max: 480 }, focusMode: 'continuous' }
         : { facingMode: { ideal: 'environment' }, width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, focusMode: 'continuous' };
 
       if (esIOS()) {
@@ -196,6 +194,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         if (track) {
           const caps = track.getCapabilities() as any;
           setTorchAvailable(!!caps?.torch);
+          const settings = track.getSettings();
+          console.log('[Scanner] Stream resolution:', settings.width, 'x', settings.height, '| focusMode:', caps?.focusMode);
         }
 
         if (!mountedRef.current) { matarStream(stream); return; }
