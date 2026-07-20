@@ -16,6 +16,7 @@ interface Stats {
   sinStock: number;
   catsData: { nombre: string; valor: number }[];
   TrendData: { labels: string[]; entradas: number[]; salidas: number[] };
+  movimientosTotales: { entradas: number; salidas: number };
 }
 
 export default function Historial() {
@@ -23,6 +24,7 @@ export default function Historial() {
     total: 0, valorTotal: 0, valorTotalPrev: 0, valorPct: 0,
     stockOptimo: 0, stockBajo: 0, sinStock: 0,
     catsData: [], TrendData: { labels: [], entradas: [], salidas: [] },
+    movimientosTotales: { entradas: 0, salidas: 0 },
   });
   const [cargando, setCargando] = useState(true);
   const donutRef = useRef<HTMLCanvasElement>(null);
@@ -71,25 +73,21 @@ export default function Historial() {
         .sort((a, b) => b.valor - a.valor)
         .slice(0, 6);
 
-      // Tendencia 7 días: entradas y salidas por día
-      const dias = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
-      const labels: string[] = [];
-      const entradas: number[] = [];
-      const salidas: number[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const inicio = ahora - (i + 1) * 24 * 60 * 60 * 1000;
-        const fin = ahora - i * 24 * 60 * 60 * 1000;
-        const dia = new Date(fin);
-        labels.push(dias[dia.getDay()]);
-        const movsDia = movsArr.filter(m => m.createdAt >= inicio && m.createdAt < fin);
-        entradas.push(movsDia.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.cantidad, 0));
-        salidas.push(movsDia.filter(m => m.tipo === 'salida').reduce((s, m) => s + m.cantidad, 0));
+      // Totales de movimientos (entradas vs salidas) para tendencia
+      let totalEntradas = 0;
+      let totalSalidas = 0;
+      for (const m of movsArr) {
+        if (m.tipo === 'entrada') totalEntradas += m.cantidad;
+        else if (m.tipo === 'salida') totalSalidas += m.cantidad;
+        else totalEntradas += Math.max(0, m.stockDespues - m.stockAntes); // ajustes/conteo
       }
 
-      setStats({
+setStats({
         total, valorTotal, valorTotalPrev, valorPct,
         stockOptimo, stockBajo, sinStock,
-        catsData, TrendData: { labels, entradas, salidas },
+        catsData,
+        TrendData: { labels: [], entradas: [], salidas: [] },
+        movimientosTotales: { entradas: totalEntradas, salidas: totalSalidas },
       });
       setCargando(false);
     };
@@ -115,6 +113,16 @@ export default function Historial() {
       Chart.defaults.font.family = 'Inter';
       Chart.defaults.color = ticks;
 
+      // Distinct colors for each category (oklch-based palette)
+      const categoryColors = [
+        C('--primary'),        // Azul
+        C('--cyan'),           // Cian
+        C('--ok'),             // Verde
+        C('--warn'),           // Amarillo/Naranja
+        'oklch(60% 0.25 300)', // Magenta
+        'oklch(70% 0.2 50)',   // Naranja
+      ];
+
       // Destruir gráficos anteriores
       chartsRef.current.forEach(c => c?.destroy?.());
       chartsRef.current = [];
@@ -138,7 +146,7 @@ export default function Historial() {
         },
       }));
 
-      // Bars: top categorías (datos reales)
+      // Bars: top categorías con colores distintos por categoría
       const catsConData = stats.catsData.length > 0 ? stats.catsData : [{ nombre: 'Sin datos', valor: 0 }];
       chartsRef.current.push(new Chart(barsRef.current!, {
         type: 'bar',
@@ -146,7 +154,7 @@ export default function Historial() {
           labels: catsConData.map(c => c.nombre),
           datasets: [{
             data: catsConData.map(c => c.valor),
-            backgroundColor: C('--primary'),
+            backgroundColor: catsConData.map((_, i) => categoryColors[i % categoryColors.length]),
             borderRadius: 6,
             barThickness: 26,
           }],
@@ -163,25 +171,33 @@ export default function Historial() {
         },
       }));
 
-      // Line: tendencia 7 días (datos reales)
+      // Horizontal bar: Entradas vs Salidas totales (reemplaza línea 7 días)
+      const totalEntradas = stats.movimientosTotales?.entradas || 0;
+      const totalSalidas = stats.movimientosTotales?.salidas || 0;
       chartsRef.current.push(new Chart(lineRef.current!, {
-        type: 'line',
+        type: 'bar',
         data: {
-          labels: stats.TrendData.labels,
+          labels: ['Movimientos'],
           datasets: [
-            { label: 'Entradas', data: stats.TrendData.entradas, borderColor: C('--primary'), tension: 0.4, pointRadius: 0, borderWidth: 2.5, fill: false },
-            { label: 'Salidas', data: stats.TrendData.salidas, borderColor: C('--warn'), borderDash: [5, 4], tension: 0.4, pointRadius: 0, borderWidth: 2, fill: false },
+            { label: 'Entradas', data: [totalEntradas], backgroundColor: C('--primary'), borderRadius: 8 },
+            { label: 'Salidas', data: [totalSalidas], backgroundColor: C('--warn'), borderRadius: 8 },
           ],
         },
         options: {
+          indexAxis: 'y',
           plugins: {
             legend: { position: 'top', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} unidades`,
+              },
+            },
           },
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { grid: { display: false }, ticks: { color: ticks } },
-            y: { grid: { color: grid }, ticks: { color: ticks, precision: 0 } },
+            x: { grid: { color: grid }, ticks: { color: ticks, precision: 0 }, stacked: true },
+            y: { grid: { display: false }, ticks: { display: false } },
           },
         },
       }));
@@ -271,7 +287,7 @@ export default function Historial() {
 
       <div className="panel">
         <div className="p-head">
-          <h2>Tendencia (7 días)</h2>
+          <h2>Movimientos totales</h2>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         </div>
         <div className="chart-wrap"><canvas ref={lineRef} /></div>
