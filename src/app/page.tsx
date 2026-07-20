@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatMoney } from '@/lib/utils';
@@ -9,6 +9,8 @@ import { dbAlertas } from '@/lib/db-alertas';
 import { dbConteos } from '@/lib/db-conteos';
 import { dbEscaneos } from '@/lib/db-escaneos';
 import { dbProductos } from '@/lib/db-productos';
+import { dbMovimientos } from '@/lib/db-movimientos';
+import { eventBus } from '@/lib/eventBus';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 
@@ -102,6 +104,46 @@ export default function Dashboard() {
     dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
     dbEscaneos.listar({ limite: 5 }).then((escaneos) => setUltimosEscaneos(escaneos as any)).catch(() => {});
   }, [inicializado, hasHydrated]);
+
+  // Suscripción a eventBus para actualizar métricas en tiempo real cuando hay movimientos
+  useEffect(() => {
+    if (!inicializado) return;
+    const unsub = eventBus.on(() => {
+      // Recargar métricas cuando hay cambios en movimientos
+      cargarMetricas();
+    });
+    return () => unsub();
+  }, [inicializado]);
+
+  const cargarMetricas = useCallback(async () => {
+    try {
+      // Total movimientos (todos) para métricas del dashboard
+      const todosMovs = await dbMovimientos.listar({ limite: 9999 });
+      const movs = todosMovs.items;
+      let totalEntradas = 0;
+      let totalSalidas = 0;
+      for (const m of movs) {
+        if (m.tipo === 'entrada') totalEntradas += m.cantidad;
+        else if (m.tipo === 'salida') totalSalidas += m.cantidad;
+        else totalEntradas += Math.max(0, m.stockDespues - m.stockAntes);
+      }
+      setTotalEntradas(totalEntradas);
+      setTotalSalidas(totalSalidas);
+    } catch (e) {
+      console.error('[Dashboard] Error cargando métricas:', e);
+    }
+  }, []);
+
+  const [totalEntradas, setTotalEntradas] = useState(0);
+  const [totalSalidas, setTotalSalidas] = useState(0);
+
+  useEffect(() => {
+    if (!inicializado || !hasHydrated) return;
+    dbAlertas.contarNoLeidas().then(setAlertasNoLeidas);
+    dbConteos.listar().then((c) => setConteosAbiertos(c.filter((x) => x.estado === 'abierto' || x.estado === 'en_progreso').length));
+    dbEscaneos.listar({ limite: 5 }).then((escaneos) => setUltimosEscaneos(escaneos as any)).catch(() => {});
+    cargarMetricas();
+  }, [inicializado, hasHydrated, cargarMetricas]);
 
   // Búsqueda predictiva con debounce
   useEffect(() => {
