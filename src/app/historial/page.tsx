@@ -73,13 +73,15 @@ export default function Historial() {
         .sort((a, b) => b.valor - a.valor)
         .slice(0, 6);
 
-      // Totales de movimientos (entradas vs salidas) para tendencia
+      // Totales de movimientos (entradas vs salidas) para "Movimientos totales" - TODOS los movimientos
+      const todosMovs = await dbMovimientos.listar({ limite: 9999 });
+      const todosArr = todosMovs.items;
       let totalEntradas = 0;
       let totalSalidas = 0;
-      for (const m of movsArr) {
+      for (const m of todosArr) {
         if (m.tipo === 'entrada') totalEntradas += m.cantidad;
         else if (m.tipo === 'salida') totalSalidas += m.cantidad;
-        else totalEntradas += Math.max(0, m.stockDespues - m.stockAntes); // ajustes/conteo
+        else totalEntradas += Math.max(0, m.stockDespues - m.stockAntes);
       }
 
 setStats({

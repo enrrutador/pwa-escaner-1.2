@@ -195,11 +195,11 @@ function NuevoProductoInner() {
           </div>
           <div className="field">
             <label>Stock actual</label>
-            <input type="number" value={form.stockActual} onChange={(e) => setForm({ ...form, stockActual: Number(e.target.value) })} />
+            <input type="number" value={form.stockActual || ''} onChange={(e) => setForm({ ...form, stockActual: Number(e.target.value) })} />
           </div>
           <div className="field">
             <label>Stock mínimo</label>
-            <input type="number" value={form.stockMinimo} onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })} />
+            <input type="number" value={form.stockMinimo || ''} onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })} />
           </div>
           <div className="field full">
             <label>Ubicación</label>
