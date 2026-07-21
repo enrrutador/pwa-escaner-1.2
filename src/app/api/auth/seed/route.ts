@@ -1,4 +1,4 @@
-// /api/auth/seed — crea admin Marcelo si no existe. Llamado desde el cliente al iniciar.
+// /api/auth/seed — crea admin con correo real si no existe. Llamado desde el cliente al iniciar.
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
 
@@ -10,7 +10,7 @@ export async function POST() {
     const list = await usersKv.listar();
     if (list.length === 0) {
       await usersKv.crear({
-        correo: 'marcelo@stockmaster.local',
+        correo: 'atenciafab@gmail.com',
         nombre: 'Marcelo',
         password: 'Saturnoviamail1',
         rol: 'admin',
@@ -22,3 +22,4 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
+
