@@ -2,50 +2,59 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/authStore';
-import { dbUsuarios } from '@/lib/db-usuarios';
-import { codificarInvitacion } from '@/lib/invitaciones';
-import { hashPin } from '@/lib/utils';
-import type { Usuario, RolUsuario } from '@/types';
+import { useAuthStore, adminHeaders, type UsuarioApi } from '@/store/authStore';
+import type { RolUsuario } from '@/types';
+
+interface UsuarioAdmin {
+  id: string;
+  correo: string;
+  nombre: string;
+  rol: RolUsuario;
+  activo: boolean;
+  createdAt: number;
+  deviceId?: string;
+  lastLoginAt?: number;
+  sessionExpiresAt?: number;
+}
 
 export default function AdminPage() {
   const router = useRouter();
-  const { usuario, esAdmin, inicializado, logout } = useAuthStore();
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const { usuario, esAdmin, inicializado } = useAuthStore();
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [loading, setLoading] = useState(true);
-  const [crearOpen, setCrearOpen] = useState(false);
-  const [crearNombre, setCrearNombre] = useState('');
-  const [crearPin, setCrearPin] = useState('');
-  const [crearRol, setCrearRol] = useState<RolUsuario>('operador');
-  const [crearError, setCrearError] = useState('');
   const [mensaje, setMensaje] = useState('');
 
-  // Modal posterior: mostrar PIN + código al admin tras crear
-  const [showCredOpen, setShowCredOpen] = useState(false);
-  const [showCredNombre, setShowCredNombre] = useState('');
-  const [showCredPin, setShowCredPin] = useState('');
-  const [showCredCodigo, setShowCredCodigo] = useState('');
-  const [copiado, setCopiado] = useState(false);
+  // Crear usuario
+  const [crearOpen, setCrearOpen] = useState(false);
+  const [cCorreo, setCCorreo] = useState('');
+  const [cNombre, setCNombre] = useState('');
+  const [cPassword, setCPassword] = useState('');
+  const [cRol, setCRol] = useState<RolUsuario>('operador');
+  const [crearError, setCrearError] = useState('');
+  const [crearLoading, setCrearLoading] = useState(false);
 
-  // Cambiar mi contraseña (admin)
+  // Cambiar mi contraseña
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdNueva, setPwdNueva] = useState('');
   const [pwdConfirm, setPwdConfirm] = useState('');
   const [pwdError, setPwdError] = useState('');
 
-  // Cambiar PIN de un usuario
-  const [pinOpen, setPinOpen] = useState(false);
-  const [pinTarget, setPinTarget] = useState<Usuario | null>(null);
-  const [pinNuevo, setPinNuevo] = useState('');
-  const [pinConfirm, setPinConfirm] = useState('');
-  const [pinError, setPinError] = useState('');
+  // Cambiar password de un usuario
+  const [usrOpen, setUsrOpen] = useState(false);
+  const [usrTarget, setUsrTarget] = useState<UsuarioAdmin | null>(null);
+  const [usrPass, setUsrPass] = useState('');
+  const [usrConfirm, setUsrConfirm] = useState('');
+  const [usrError, setUsrError] = useState('');
 
   const cargarUsuarios = useCallback(async () => {
-    if (!inicializado || !esAdmin()) return;
-    const list = await dbUsuarios.listar();
-    setUsuarios(list);
+    if (!inicializado || !esAdmin() || !usuario) return;
+    try {
+      const res = await fetch('/api/admin/usuarios', { headers: adminHeaders(usuario) });
+      const data = await res.json();
+      if (data.ok) setUsuarios(data.usuarios);
+    } catch {}
     setLoading(false);
-  }, [inicializado, esAdmin]);
+  }, [inicializado, esAdmin, usuario]);
 
   useEffect(() => {
     if (!inicializado) return;
@@ -56,97 +65,91 @@ export default function AdminPage() {
     cargarUsuarios();
   }, [inicializado, esAdmin, router, cargarUsuarios]);
 
-  const handleCrearUsuario = async (e: React.FormEvent) => {
+  const flash = (m: string, ms = 3000) => {
+    setMensaje(m);
+    setTimeout(() => setMensaje(''), ms);
+  };
+
+  const handleCrear = async (e: React.FormEvent) => {
     e.preventDefault();
     setCrearError('');
-    if (!crearNombre.trim() || !crearPin.trim()) {
+    if (!cCorreo.trim() || !cNombre.trim() || !cPassword) {
       setCrearError('Completá todos los campos');
       return;
     }
-    if (crearPin.length < 4) {
-      setCrearError('El PIN debe tener al menos 4 dígitos');
+    if (cPassword.length < 8) {
+      setCrearError('La contraseña debe tener al menos 8 caracteres');
       return;
     }
+    setCrearLoading(true);
     try {
-      const nuevo = await dbUsuarios.crear({ nombre: crearNombre.trim(), pin: crearPin.trim(), rol: crearRol });
-      // Generar el pinHash para el código de invitación (usamos el hash que se acaba de guardar)
-      const pinHash = await hashPin(crearPin.trim());
-      const codigo = codificarInvitacion({ nombre: nuevo.nombre, pinHash, rol: nuevo.rol });
+      const res = await fetch('/api/admin/usuarios', {
+        method: 'POST',
+        headers: adminHeaders(usuario),
+        body: JSON.stringify({
+          correo: cCorreo.trim(),
+          nombre: cNombre.trim(),
+          password: cPassword,
+          rol: cRol,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setCrearError(data.error || 'Error al crear usuario');
+        return;
+      }
       setCrearOpen(false);
-      setShowCredNombre(nuevo.nombre);
-      setShowCredPin(crearPin.trim());
-      setShowCredCodigo(codigo);
-      setShowCredOpen(true);
-      setCopiado(false);
-      setCrearNombre('');
-      setCrearPin('');
-      setCrearRol('operador');
+      resetCrear();
+      flash(`Usuario "${cNombre.trim()}" creado`);
       await cargarUsuarios();
     } catch (err: any) {
-      setCrearError(err.message || 'Error al crear usuario');
+      setCrearError(err.message || 'Error');
+    } finally {
+      setCrearLoading(false);
     }
   };
 
-  const copiarCodigo = async () => {
-    try {
-      await navigator.clipboard.writeText(showCredCodigo);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    } catch {
-      // fallback: seleccionar manualmente
-    }
+  const resetCrear = () => {
+    setCCorreo(''); setCNombre(''); setCPassword(''); setCRol('operador'); setCrearError('');
   };
 
-  const handleRevocar = async (u: Usuario) => {
-    if (!confirm(`¿Revocar acceso a "${u.nombre}"? Se desactivará y se limpiará su dispositivo.`)) return;
-    await dbUsuarios.revocarAcceso(u.id);
-    setMensaje(`Acceso de "${u.nombre}" revocado`);
-    setTimeout(() => setMensaje(''), 3000);
-    await cargarUsuarios();
-  };
-
-  const handleExtender = async (u: Usuario) => {
-    await dbUsuarios.extenderSesion(u.id, 30);
-    setMensaje(`Sesión de "${u.nombre}" extendida 30 días`);
-    setTimeout(() => setMensaje(''), 3000);
-    await cargarUsuarios();
-  };
-
-  const handleToggleActivo = async (u: Usuario) => {
-    await dbUsuarios.actualizar(u.id, { activo: !u.activo });
-    setMensaje(`Usuario "${u.nombre}" ${u.activo ? 'desactivado' : 'activado'}`);
-    setTimeout(() => setMensaje(''), 3000);
-    await cargarUsuarios();
-  };
-
-  const handleCambiarPwd = async (e: React.FormEvent) => {
+  const handleMiPwd = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwdError('');
     if (pwdNueva.length < 8) { setPwdError('Mínimo 8 caracteres'); return; }
     if (pwdNueva !== pwdConfirm) { setPwdError('Las contraseñas no coinciden'); return; }
     try {
-      await dbUsuarios.actualizarPassword(usuario!.id, pwdNueva);
+      const res = await fetch(`/api/admin/usuarios/${encodeURIComponent(usuario!.correo)}`, {
+        method: 'PUT',
+        headers: adminHeaders(usuario),
+        body: JSON.stringify({ password: pwdNueva }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setPwdError(data.error || 'Error'); return; }
       setPwdOpen(false); setPwdNueva(''); setPwdConfirm('');
-      setMensaje('Tu contraseña fue actualizada. Cerrá sesión y volvé a entrar.');
-      setTimeout(() => setMensaje(''), 4000);
+      flash('Tu contraseña fue actualizada');
     } catch (err: any) {
-      setPwdError(err.message || 'Error');
+      setPwdError(err.message);
     }
   };
 
-  const handleCambiarPin = async (e: React.FormEvent) => {
+  const handleUsrPwd = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPinError('');
-    if (pinNuevo.length < 4) { setPinError('Mínimo 4 dígitos'); return; }
-    if (pinNuevo !== pinConfirm) { setPinError('Los PINes no coinciden'); return; }
+    setUsrError('');
+    if (usrPass.length < 8) { setUsrError('Mínimo 8 caracteres'); return; }
+    if (usrPass !== usrConfirm) { setUsrError('Las contraseñas no coinciden'); return; }
     try {
-      await dbUsuarios.actualizar(pinTarget!.id, { pin: pinNuevo });
-      setPinOpen(false); setPinNuevo(''); setPinConfirm(''); setPinTarget(null);
-      setMensaje(`PIN de "${pinTarget?.nombre}" actualizado`);
-      setTimeout(() => setMensaje(''), 3000);
-      await cargarUsuarios();
+      const res = await fetch(`/api/admin/usuarios/${encodeURIComponent(usrTarget!.correo)}`, {
+        method: 'PUT',
+        headers: adminHeaders(usuario),
+        body: JSON.stringify({ password: usrPass }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setUsrError(data.error || 'Error'); return; }
+      setUsrOpen(false); setUsrPass(''); setUsrConfirm('');
+      flash(`Contraseña de "${usrTarget?.nombre}" actualizada`);
     } catch (err: any) {
-      setPinError(err.message || 'Error');
+      setUsrError(err.message);
     }
   };
 
@@ -157,14 +160,13 @@ export default function AdminPage() {
       </div>
     );
   }
-
   if (!esAdmin()) return null;
 
-  const formatDate = (ts?: number) => ts ? new Date(ts).toLocaleDateString('es-AR') + ' ' + new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
+  const fmt = (ts?: number) => ts ? new Date(ts).toLocaleDateString('es-AR') + ' ' + new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
 
   return (
     <div className="screen active" style={{ paddingBottom: 100 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <p className="eyebrow">Admin</p>
           <h1 className="h-page">Administración</h1>
@@ -179,7 +181,7 @@ export default function AdminPage() {
           </button>
           <button
             className="btn-primary"
-            onClick={() => setCrearOpen(true)}
+            onClick={() => { setCrearOpen(true); resetCrear(); }}
             style={{ height: 44 }}
           >
             + Nuevo usuario
@@ -207,86 +209,43 @@ export default function AdminPage() {
             <div
               key={u.id}
               style={{
-                background: 'var(--surface)',
-                borderRadius: 'var(--r-xl)',
-                padding: 16,
-                border: '1px solid var(--line-soft)',
-                opacity: u.activo ? 1 : 0.5,
+                background: 'var(--surface)', borderRadius: 'var(--r-xl)',
+                padding: 16, border: '1px solid var(--line-soft)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: '1rem' }}>{u.nombre}</div>
-                  <div style={{ fontSize: '.8rem', color: 'var(--text-faint)', marginTop: 2 }}>
+                  <div style={{ fontSize: '.8rem', color: 'var(--text-faint)', marginTop: 2, wordBreak: 'break-all' }}>
+                    {u.correo}
+                  </div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-dim)', marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{
-                      display: 'inline-block',
-                      padding: '2px 8px',
-                      borderRadius: 'var(--r-full)',
-                      fontSize: '.7rem',
-                      fontWeight: 700,
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--r-full)',
+                      fontSize: '.7rem', fontWeight: 700,
                       background: u.rol === 'admin' ? 'color-mix(in srgb, var(--primary) 20%, transparent)' : 'color-mix(in srgb, var(--cyan) 20%, transparent)',
                       color: u.rol === 'admin' ? 'var(--primary)' : 'var(--cyan)',
-                      marginRight: 8,
                     }}>
                       {u.rol.toUpperCase()}
                     </span>
-                    {u.activo ? 'Activo' : 'Inactivo'}
+                    <span>Últ. login: {fmt(u.lastLoginAt)}</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    className="icon-btn"
-                    onClick={() => { setPinTarget(u); setPinOpen(true); setPinNuevo(''); setPinConfirm(''); setPinError(''); }}
-                    title="Cambiar PIN"
-                    style={{ width: 36, height: 36 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                  </button>
-                  <button
-                    className="icon-btn"
-                    onClick={() => handleExtender(u)}
-                    title="Extender sesión 30 días"
-                    style={{ width: 36, height: 36 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                  </button>
-                  <button
-                    className="icon-btn"
-                    onClick={() => handleRevocar(u)}
-                    title="Revocar acceso"
-                    style={{ width: 36, height: 36 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  </button>
-                  <button
-                    className="icon-btn"
-                    onClick={() => handleToggleActivo(u)}
-                    title={u.activo ? 'Desactivar' : 'Activar'}
-                    style={{ width: 36, height: 36 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      {u.activo
-                        ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
-                        : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                      }
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div style={{ fontSize: '.75rem', color: 'var(--text-dim)', marginTop: 8, display: 'flex', gap: 16 }}>
-                <span>Dispositivo: {u.deviceId ? u.deviceId.slice(0, 8) + '...' : '—'}</span>
-                <span>Último login: {formatDate(u.lastLoginAt)}</span>
-                <span>Expira: {formatDate(u.sessionExpiresAt)}</span>
+                <button
+                  className="icon-btn"
+                  onClick={() => { setUsrTarget(u); setUsrOpen(true); setUsrPass(''); setUsrConfirm(''); setUsrError(''); }}
+                  title="Cambiar contraseña"
+                  style={{ width: 36, height: 36, flexShrink: 0 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Crear usuario */}
       {crearOpen && (
         <div className="modal-overlay" onClick={() => setCrearOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
@@ -296,35 +255,36 @@ export default function AdminPage() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <form onSubmit={handleCrearUsuario}>
+            <form onSubmit={handleCrear}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NOMBRE</label>
                   <input
-                    type="text"
-                    value={crearNombre}
-                    onChange={(e) => setCrearNombre(e.target.value)}
-                    placeholder="Nombre del usuario"
+                    type="text" value={cNombre} onChange={(e) => setCNombre(e.target.value)}
+                    placeholder="Nombre del usuario" autoFocus
                     style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>PIN</label>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CORREO</label>
                   <input
-                    type="password"
-                    value={crearPin}
-                    onChange={(e) => setCrearPin(e.target.value)}
-                    placeholder="Mínimo 4 dígitos"
-                    maxLength={6}
-                    inputMode="numeric"
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none', letterSpacing: 6, textAlign: 'center' }}
+                    type="email" value={cCorreo} onChange={(e) => setCCorreo(e.target.value)}
+                    placeholder="nombre@correo.com" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONTRASEÑA</label>
+                  <input
+                    type="password" value={cPassword} onChange={(e) => setCPassword(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>ROL</label>
                   <select
-                    value={crearRol}
-                    onChange={(e) => setCrearRol(e.target.value as RolUsuario)}
+                    value={cRol} onChange={(e) => setCRol(e.target.value as RolUsuario)}
                     style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   >
                     <option value="operador">Operador</option>
@@ -333,20 +293,19 @@ export default function AdminPage() {
                   </select>
                 </div>
                 {crearError && (
-                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
-                    {crearError}
-                  </div>
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{crearError}</div>
                 )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-ghost" onClick={() => setCrearOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Crear usuario</button>
+                <button type="submit" className="btn-primary" disabled={crearLoading}>{crearLoading ? 'Creando...' : 'Crear usuario'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* Cambiar mi contraseña */}
       {pwdOpen && (
         <div className="modal-overlay" onClick={() => setPwdOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
@@ -356,156 +315,74 @@ export default function AdminPage() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <form onSubmit={handleCambiarPwd}>
+            <form onSubmit={handleMiPwd}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVA CONTRASEÑA</label>
                   <input
-                    type="password"
-                    value={pwdNueva}
-                    onChange={(e) => setPwdNueva(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
-                    autoFocus
+                    type="password" value={pwdNueva} onChange={(e) => setPwdNueva(e.target.value)}
+                    placeholder="Mínimo 8 caracteres" autoFocus
                     style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
                   <input
-                    type="password"
-                    value={pwdConfirm}
-                    onChange={(e) => setPwdConfirm(e.target.value)}
+                    type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)}
                     placeholder="Repetir contraseña"
                     style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
                 {pwdError && (
-                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
-                    {pwdError}
-                  </div>
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{pwdError}</div>
                 )}
-                <p style={{ fontSize: '.75rem', color: 'var(--text-faint)' }}>Vas a tener que iniciar sesión de nuevo con el PIN + nueva contraseña.</p>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-ghost" onClick={() => setPwdOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Guardar contraseña</button>
+                <button type="submit" className="btn-primary">Guardar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {pinOpen && pinTarget && (
-        <div className="modal-overlay" onClick={() => setPinOpen(false)}>
+      {/* Cambiar contraseña de un usuario */}
+      {usrOpen && usrTarget && (
+        <div className="modal-overlay" onClick={() => setUsrOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <div className="modal-header">
-              <h2>Cambiar PIN de {pinTarget.nombre}</h2>
-              <button className="modal-close" onClick={() => setPinOpen(false)}>
+              <h2>Cambiar contraseña de {usrTarget.nombre}</h2>
+              <button className="modal-close" onClick={() => setUsrOpen(false)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <form onSubmit={handleCambiarPin}>
+            <form onSubmit={handleUsrPwd}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVO PIN</label>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVA CONTRASEÑA</label>
                   <input
-                    type="password"
-                    value={pinNuevo}
-                    onChange={(e) => setPinNuevo(e.target.value)}
-                    placeholder="Mínimo 4 dígitos"
-                    maxLength={6}
-                    inputMode="numeric"
-                    autoFocus
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1.5rem', color: 'var(--text)', outline: 'none', letterSpacing: 6, textAlign: 'center' }}
+                    type="password" value={usrPass} onChange={(e) => setUsrPass(e.target.value)}
+                    placeholder="Mínimo 8 caracteres" autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
                   <input
-                    type="password"
-                    value={pinConfirm}
-                    onChange={(e) => setPinConfirm(e.target.value)}
-                    placeholder="Repetir PIN"
-                    maxLength={6}
-                    inputMode="numeric"
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1.5rem', color: 'var(--text)', outline: 'none', letterSpacing: 6, textAlign: 'center' }}
+                    type="password" value={usrConfirm} onChange={(e) => setUsrConfirm(e.target.value)}
+                    placeholder="Repetir contraseña"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
                   />
                 </div>
-                {pinError && (
-                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
-                    {pinError}
-                  </div>
+                {usrError && (
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{usrError}</div>
                 )}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn-ghost" onClick={() => setPinOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Guardar PIN</button>
+                <button type="button" className="btn-ghost" onClick={() => setUsrOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Guardar</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {showCredOpen && (
-        <div className="modal-overlay" onClick={() => setShowCredOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
-            <div className="modal-header">
-              <h2>Usuario creado</h2>
-              <button className="modal-close" onClick={() => setShowCredOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <p style={{ color: 'var(--text-dim)', fontSize: '.9rem', margin: 0 }}>
-                Compartí estas credenciales con <strong>{showCredNombre}</strong>. Debe ingresar al login, tocar <strong>"¿Tenés código?"</strong> y pegar el código.
-              </p>
-
-              <div style={{
-                padding: 16, borderRadius: 'var(--r-lg)',
-                background: 'var(--surface)', border: '1px solid var(--line-soft)',
-                display: 'flex', flexDirection: 'column', gap: 12,
-              }}>
-                <div>
-                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>USUARIO</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{showCredNombre}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>PIN</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: 6, fontFamily: 'monospace' }}>{showCredPin}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>CÓDIGO DE INVITACIÓN</div>
-                  <div style={{
-                    padding: '10px 12px',
-                    background: 'color-mix(in srgb, var(--primary) 8%, var(--surface))',
-                    border: '1px dashed var(--primary)',
-                    borderRadius: 'var(--r-md)',
-                    fontFamily: 'monospace',
-                    fontSize: '.8rem',
-                    color: 'var(--primary)',
-                    wordBreak: 'break-all',
-                    userSelect: 'all',
-                  }}>
-                    {showCredCodigo}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={copiarCodigo}
-                className="btn-primary"
-                style={{ marginTop: 4 }}
-              >
-                {copiado ? '✓ Código copiado' : '📋 Copiar código'}
-              </button>
-
-              <p style={{ fontSize: '.75rem', color: 'var(--text-faint)', margin: 0, textAlign: 'center' }}>
-                ⚠️ Este código funciona una sola vez por dispositivo. El operador lo pega una vez y luego entra solo con usuario + PIN.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn-ghost" onClick={() => setShowCredOpen(false)}>Cerrar</button>
-            </div>
           </div>
         </div>
       )}

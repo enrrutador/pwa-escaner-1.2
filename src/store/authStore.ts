@@ -1,25 +1,50 @@
 import { create } from 'zustand';
-import { persist, type StateStorage } from 'zustand/middleware';
-import type { Usuario, Permiso } from '@/types';
-import { PERMISOS_POR_ROL } from '@/types';
-import { dbUsuarios } from '@/lib/db-usuarios';
-import { seedSiVacio } from '@/lib/seed';
+import { persist } from 'zustand/middleware';
+import { PERMISOS_POR_ROL, type Permiso, type RolUsuario } from '@/types';
+
+export interface UsuarioApi {
+  id: string;
+  correo: string;
+  nombre: string;
+  rol: RolUsuario;
+  activo: boolean;
+  createdAt: number;
+  deviceId?: string;
+  sessionToken?: string;
+  lastLoginAt?: number;
+  sessionExpiresAt?: number;
+}
 
 interface AuthState {
-  usuario: Usuario | null;
+  usuario: UsuarioApi | null;
   inicializado: boolean;
   _hasHydrated: boolean;
   inicializar: () => Promise<void>;
-  login: (nombre: string, pin: string, deviceId: string, password?: string) => Promise<{ ok: boolean; error?: string }>;
-  esAdminPorNombre: (nombre: string) => Promise<boolean>;
+  login: (correo: string, password: string, deviceId: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   tienePermiso: (permiso: Permiso) => boolean;
   esAdmin: () => boolean;
-  validarSesion: () => Promise<boolean>;
 }
 
 interface PersistedAuthState {
-  usuario: Usuario | null;
+  usuario: UsuarioApi | null;
+}
+
+function uid(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function getDeviceId(): string {
+  if (typeof window === 'undefined') return '';
+  let deviceId = localStorage.getItem('stockmaster-device-id');
+  if (!deviceId) {
+    deviceId = uid();
+    localStorage.setItem('stockmaster-device-id', deviceId);
+  }
+  return deviceId;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -30,54 +55,67 @@ export const useAuthStore = create<AuthState>()(
       _hasHydrated: false,
 
       async inicializar() {
-        await seedSiVacio();
+        // Asegurar que el admin Marcelo exista en el backend (seed)
+        try {
+          await fetch('/api/auth/seed', { method: 'POST' });
+        } catch {}
 
+        // Si hay usuario persistido, validar sesión contra el backend
         const actual = get().usuario;
-        if (actual) {
-          const fresco = await dbUsuarios.obtener(actual.id);
-          if (fresco?.activo) {
-            if (fresco.sessionToken && fresco.sessionExpiresAt) {
-              const valida = await dbUsuarios.validarSesion(fresco.id, fresco.deviceId || '', fresco.sessionToken);
-              if (!valida) {
-                set({ usuario: null });
-                return;
-              }
+        if (actual?.sessionToken && actual?.correo) {
+          try {
+            const res = await fetch('/api/auth/validate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                correo: actual.correo,
+                deviceId: getDeviceId(),
+                sessionToken: actual.sessionToken,
+              }),
+            });
+            const data = await res.json();
+            if (!data.ok) {
+              set({ usuario: null });
+              set({ inicializado: true });
+              return;
             }
-            set({ usuario: fresco });
-          } else {
-            set({ usuario: null });
+            // Refrescar datos por si cambiaron
+            set({ usuario: data.usuario });
+          } catch {
+            // Sin conexión: mantener usuario persistido (offline-first para sesión ya abierta)
           }
         }
-
         set({ inicializado: true });
       },
 
-      async login(nombre, pin, deviceId, password) {
-        const res = await dbUsuarios.verificarPin(nombre, pin, deviceId);
-        if (!res.ok || !res.usuario) return { ok: false, error: res.error };
-
-        // Si el usuario es admin, validar password extra
-        if (res.usuario.rol === 'admin' && res.usuario.passwordHash) {
-          if (!password) return { ok: false, error: 'Contraseña requerida para admin' };
-          const pwdOk = await dbUsuarios.verificarPassword(nombre, password);
-          if (!pwdOk) return { ok: false, error: 'Contraseña admin incorrecta' };
+      async login(correo, password, deviceId) {
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ correo, password, deviceId }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            return { ok: false, error: data.error || 'Error al iniciar sesión' };
+          }
+          set({ usuario: data.usuario });
+          return { ok: true };
+        } catch (e: any) {
+          return { ok: false, error: 'Sin conexión al servidor' };
         }
-
-        const { sessionToken } = await dbUsuarios.iniciarSesion(res.usuario.id, deviceId);
-        const usuarioActualizado = { ...res.usuario, sessionToken };
-        set({ usuario: usuarioActualizado });
-        return { ok: true };
-      },
-
-      async esAdminPorNombre(nombre) {
-        const u = await dbUsuarios.obtenerPorNombre(nombre);
-        return u?.rol === 'admin' && !!u?.passwordHash;
       },
 
       async logout() {
         const actual = get().usuario;
-        if (actual?.sessionToken) {
-          await dbUsuarios.cerrarSesion(actual.id);
+        if (actual?.correo) {
+          try {
+            await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ correo: actual.correo }),
+            });
+          } catch {}
         }
         set({ usuario: null });
       },
@@ -91,18 +129,6 @@ export const useAuthStore = create<AuthState>()(
       esAdmin() {
         return get().usuario?.rol === 'admin';
       },
-
-      async validarSesion() {
-        const actual = get().usuario;
-        if (!actual?.sessionToken) return true;
-        
-        const valida = await dbUsuarios.validarSesion(actual.id, actual.deviceId || '', actual.sessionToken);
-        if (!valida) {
-          await get().logout();
-          return false;
-        }
-        return true;
-      },
     }),
     {
       name: 'stockmaster-auth',
@@ -113,3 +139,13 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// Helper para headers de autorización admin
+export function adminHeaders(usuario: UsuarioApi | null): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'x-user-correo': usuario?.correo || '',
+    'x-user-token': usuario?.sessionToken || '',
+    'x-user-device': getDeviceId(),
+  };
+}
