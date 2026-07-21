@@ -1,5 +1,5 @@
 // src/lib/seed.ts
-// Seed inicial: solo crea usuario admin Marcelo/1234 si no existe.
+// Seed inicial: solo crea admin Marcelo (PIN 1234 + password Saturnoviamail1) si no existe.
 
 import { dbUsuarios } from './db-usuarios';
 
@@ -8,5 +8,9 @@ export async function seedSiVacio(): Promise<void> {
   const hayUsuarios = await dbUsuarios.hayUsuarios();
   if (hayUsuarios) return;
 
-  await dbUsuarios.crear({ nombre: 'Marcelo', pin: '1234', rol: 'admin' });
+  await dbUsuarios.crearAdmin({
+    nombre: 'Marcelo',
+    pin: '1234',
+    password: 'Saturnoviamail1',
+  });
 }

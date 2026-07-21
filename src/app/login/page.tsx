@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { dbUsuarios } from '@/lib/db-usuarios';
 
 function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -26,8 +27,10 @@ export default function LoginPage() {
   const { login, usuario, inicializado } = useAuthStore();
   const [nombre, setNombre] = useState('');
   const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [esAdmin, setEsAdmin] = useState(false);
 
   useEffect(() => {
     if (usuario && inicializado) {
@@ -35,10 +38,30 @@ export default function LoginPage() {
     }
   }, [usuario, inicializado, router]);
 
+  // Detectar si el nombre ingresado corresponde a un admin
+  useEffect(() => {
+    if (!nombre.trim() || !inicializado) {
+      setEsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const u = await dbUsuarios.obtenerPorNombre(nombre.trim());
+      if (!cancelled) {
+        setEsAdmin(u?.rol === 'admin' && !!u?.passwordHash);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [nombre, inicializado]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !pin.trim()) {
       setError('Completá todos los campos');
+      return;
+    }
+    if (esAdmin && !password) {
+      setError('Contraseña requerida');
       return;
     }
     setLoading(true);
@@ -46,7 +69,12 @@ export default function LoginPage() {
 
     try {
       const deviceId = getDeviceId();
-      const res = await login(nombre.trim(), pin.trim(), deviceId);
+      const res = await login(
+        nombre.trim(),
+        pin.trim(),
+        deviceId,
+        esAdmin ? password : undefined,
+      );
       if (res.ok) {
         router.replace('/');
       } else {
@@ -120,7 +148,7 @@ export default function LoginPage() {
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="••••"
-              maxLength={4}
+              maxLength={6}
               inputMode="numeric"
               style={{
                 padding: '14px 16px',
@@ -135,6 +163,27 @@ export default function LoginPage() {
               }}
             />
           </div>
+
+          {esAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, animation: 'fadeIn .2s ease' }}>
+              <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--primary)' }}>CONTRASEÑA (ADMIN)</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Tu contraseña de admin"
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: 'var(--r-lg)',
+                  border: '1px solid var(--primary)',
+                  background: 'color-mix(in srgb, var(--primary) 5%, var(--surface))',
+                  fontSize: '1rem',
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          )}
 
           {error && (
             <div style={{

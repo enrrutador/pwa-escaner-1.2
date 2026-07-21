@@ -10,7 +10,8 @@ interface AuthState {
   inicializado: boolean;
   _hasHydrated: boolean;
   inicializar: () => Promise<void>;
-  login: (nombre: string, pin: string, deviceId: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (nombre: string, pin: string, deviceId: string, password?: string) => Promise<{ ok: boolean; error?: string }>;
+  esAdminPorNombre: (nombre: string) => Promise<boolean>;
   logout: () => Promise<void>;
   tienePermiso: (permiso: Permiso) => boolean;
   esAdmin: () => boolean;
@@ -51,14 +52,26 @@ export const useAuthStore = create<AuthState>()(
         set({ inicializado: true });
       },
 
-      async login(nombre, pin, deviceId) {
+      async login(nombre, pin, deviceId, password) {
         const res = await dbUsuarios.verificarPin(nombre, pin, deviceId);
         if (!res.ok || !res.usuario) return { ok: false, error: res.error };
+
+        // Si el usuario es admin, validar password extra
+        if (res.usuario.rol === 'admin' && res.usuario.passwordHash) {
+          if (!password) return { ok: false, error: 'Contraseña requerida para admin' };
+          const pwdOk = await dbUsuarios.verificarPassword(nombre, password);
+          if (!pwdOk) return { ok: false, error: 'Contraseña admin incorrecta' };
+        }
 
         const { sessionToken } = await dbUsuarios.iniciarSesion(res.usuario.id, deviceId);
         const usuarioActualizado = { ...res.usuario, sessionToken };
         set({ usuario: usuarioActualizado });
         return { ok: true };
+      },
+
+      async esAdminPorNombre(nombre) {
+        const u = await dbUsuarios.obtenerPorNombre(nombre);
+        return u?.rol === 'admin' && !!u?.passwordHash;
       },
 
       async logout() {

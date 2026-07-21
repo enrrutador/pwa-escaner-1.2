@@ -2,7 +2,7 @@
 // Repositorio de usuarios: CRUD + auth por PIN.
 
 import { db } from './db';
-import { uid, now, hashPin } from './utils';
+import { uid, now, hashPin, hashPassword } from './utils';
 import type { Usuario, RolUsuario } from '@/types';
 
 export const dbUsuarios = {
@@ -37,6 +37,49 @@ export const dbUsuarios = {
     };
     await db.usuarios.add(usuario);
     return usuario;
+  },
+
+  // Crear admin: con PIN + contraseña fuerte
+  async crearAdmin({
+    nombre,
+    pin,
+    password,
+  }: {
+    nombre: string;
+    pin: string;
+    password: string;
+  }): Promise<Usuario> {
+    if (password.length < 8) {
+      throw new Error('La contraseña debe tener al menos 8 caracteres');
+    }
+    const usuario: Usuario = {
+      id: uid(),
+      nombre,
+      pinHash: await hashPin(pin),
+      passwordHash: await hashPassword(password),
+      rol: 'admin',
+      activo: true,
+      createdAt: now(),
+    };
+    await db.usuarios.add(usuario);
+    return usuario;
+  },
+
+  // Verificar contraseña admin (solo si usuario tiene passwordHash)
+  async verificarPassword(nombre: string, password: string): Promise<boolean> {
+    const usuario = await this.obtenerPorNombre(nombre);
+    if (!usuario || !usuario.activo) return false;
+    if (!usuario.passwordHash) return false;
+    const h = await hashPassword(password);
+    return h === usuario.passwordHash;
+  },
+
+  // Actualizar contraseña admin (solo admin puede invocar)
+  async actualizarPassword(id: string, password: string): Promise<void> {
+    if (password.length < 8) {
+      throw new Error('La contraseña debe tener al menos 8 caracteres');
+    }
+    await db.usuarios.update(id, { passwordHash: await hashPassword(password) });
   },
 
   async actualizar(

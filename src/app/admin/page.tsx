@@ -18,6 +18,19 @@ export default function AdminPage() {
   const [crearError, setCrearError] = useState('');
   const [mensaje, setMensaje] = useState('');
 
+  // Cambiar mi contraseña (admin)
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [pwdNueva, setPwdNueva] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [pwdError, setPwdError] = useState('');
+
+  // Cambiar PIN de un usuario
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinTarget, setPinTarget] = useState<Usuario | null>(null);
+  const [pinNuevo, setPinNuevo] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinError, setPinError] = useState('');
+
   const cargarUsuarios = useCallback(async () => {
     if (!inicializado || !esAdmin()) return;
     const list = await dbUsuarios.listar();
@@ -81,6 +94,37 @@ export default function AdminPage() {
     await cargarUsuarios();
   };
 
+  const handleCambiarPwd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError('');
+    if (pwdNueva.length < 8) { setPwdError('Mínimo 8 caracteres'); return; }
+    if (pwdNueva !== pwdConfirm) { setPwdError('Las contraseñas no coinciden'); return; }
+    try {
+      await dbUsuarios.actualizarPassword(usuario!.id, pwdNueva);
+      setPwdOpen(false); setPwdNueva(''); setPwdConfirm('');
+      setMensaje('Tu contraseña fue actualizada. Cerrá sesión y volvé a entrar.');
+      setTimeout(() => setMensaje(''), 4000);
+    } catch (err: any) {
+      setPwdError(err.message || 'Error');
+    }
+  };
+
+  const handleCambiarPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinError('');
+    if (pinNuevo.length < 4) { setPinError('Mínimo 4 dígitos'); return; }
+    if (pinNuevo !== pinConfirm) { setPinError('Los PINes no coinciden'); return; }
+    try {
+      await dbUsuarios.actualizar(pinTarget!.id, { pin: pinNuevo });
+      setPinOpen(false); setPinNuevo(''); setPinConfirm(''); setPinTarget(null);
+      setMensaje(`PIN de "${pinTarget?.nombre}" actualizado`);
+      setTimeout(() => setMensaje(''), 3000);
+      await cargarUsuarios();
+    } catch (err: any) {
+      setPinError(err.message || 'Error');
+    }
+  };
+
   if (!inicializado) {
     return (
       <div className="screen active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
@@ -100,13 +144,22 @@ export default function AdminPage() {
           <p className="eyebrow">Admin</p>
           <h1 className="h-page">Administración</h1>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => setCrearOpen(true)}
-          style={{ height: 44 }}
-        >
-          + Nuevo usuario
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn-ghost"
+            onClick={() => { setPwdOpen(true); setPwdNueva(''); setPwdConfirm(''); setPwdError(''); }}
+            style={{ height: 44 }}
+          >
+            🔑 Cambiar mi contraseña
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => setCrearOpen(true)}
+            style={{ height: 44 }}
+          >
+            + Nuevo usuario
+          </button>
+        </div>
       </div>
 
       {mensaje && (
@@ -156,6 +209,14 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="icon-btn"
+                    onClick={() => { setPinTarget(u); setPinOpen(true); setPinNuevo(''); setPinConfirm(''); setPinError(''); }}
+                    title="Cambiar PIN"
+                    style={{ width: 36, height: 36 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </button>
                   <button
                     className="icon-btn"
                     onClick={() => handleExtender(u)}
@@ -255,6 +316,105 @@ export default function AdminPage() {
               <div className="modal-footer">
                 <button type="button" className="btn-ghost" onClick={() => setCrearOpen(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">Crear usuario</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {pwdOpen && (
+        <div className="modal-overlay" onClick={() => setPwdOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>Cambiar mi contraseña</h2>
+              <button className="modal-close" onClick={() => setPwdOpen(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <form onSubmit={handleCambiarPwd}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVA CONTRASEÑA</label>
+                  <input
+                    type="password"
+                    value={pwdNueva}
+                    onChange={(e) => setPwdNueva(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
+                  <input
+                    type="password"
+                    value={pwdConfirm}
+                    onChange={(e) => setPwdConfirm(e.target.value)}
+                    placeholder="Repetir contraseña"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
+                  />
+                </div>
+                {pwdError && (
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
+                    {pwdError}
+                  </div>
+                )}
+                <p style={{ fontSize: '.75rem', color: 'var(--text-faint)' }}>Vas a tener que iniciar sesión de nuevo con el PIN + nueva contraseña.</p>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={() => setPwdOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Guardar contraseña</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {pinOpen && pinTarget && (
+        <div className="modal-overlay" onClick={() => setPinOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>Cambiar PIN de {pinTarget.nombre}</h2>
+              <button className="modal-close" onClick={() => setPinOpen(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <form onSubmit={handleCambiarPin}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVO PIN</label>
+                  <input
+                    type="password"
+                    value={pinNuevo}
+                    onChange={(e) => setPinNuevo(e.target.value)}
+                    placeholder="Mínimo 4 dígitos"
+                    maxLength={6}
+                    inputMode="numeric"
+                    autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1.5rem', color: 'var(--text)', outline: 'none', letterSpacing: 6, textAlign: 'center' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
+                  <input
+                    type="password"
+                    value={pinConfirm}
+                    onChange={(e) => setPinConfirm(e.target.value)}
+                    placeholder="Repetir PIN"
+                    maxLength={6}
+                    inputMode="numeric"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1.5rem', color: 'var(--text)', outline: 'none', letterSpacing: 6, textAlign: 'center' }}
+                  />
+                </div>
+                {pinError && (
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
+                    {pinError}
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={() => setPinOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Guardar PIN</button>
               </div>
             </form>
           </div>

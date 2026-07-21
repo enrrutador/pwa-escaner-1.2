@@ -99,6 +99,7 @@ export interface Usuario {
   id: string;
   nombre: string;
   pinHash: string;
+  passwordHash?: string; // Solo para admin: contraseña fuerte adicional al PIN
   rol: RolUsuario;
   activo: boolean;
   createdAt: number;
