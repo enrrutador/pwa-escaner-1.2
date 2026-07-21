@@ -24,10 +24,12 @@ export interface UsuarioKv {
 const PWD_MIN = 8;
 
 function kv(): Redis {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Vercel inyecta KV_REST_API_URL y KV_REST_API_TOKEN automaticamente
+  // cuando se conecta Upstash como KV store
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
-    throw new Error('UPSTASH_REDIS_REST_URL/TOKEN no configuradas');
+    throw new Error('KV_REST_API_URL/TOKEN no configuradas (¿Upstash conectado al proyecto?)');
   }
   return new Redis({ url, token });
 }
