@@ -10,10 +10,11 @@ interface AuthState {
   inicializado: boolean;
   _hasHydrated: boolean;
   inicializar: () => Promise<void>;
-  login: (nombre: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
-  logout: () => void;
+  login: (nombre: string, pin: string, deviceId: string) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
   tienePermiso: (permiso: Permiso) => boolean;
   esAdmin: () => boolean;
+  validarSesion: () => Promise<boolean>;
 }
 
 interface PersistedAuthState {
@@ -28,35 +29,43 @@ export const useAuthStore = create<AuthState>()(
       _hasHydrated: false,
 
       async inicializar() {
-        // Seed inicial si la DB está vacía
         await seedSiVacio();
 
-        // Rehidrata usuario persistido validando que siga activo en DB.
         const actual = get().usuario;
         if (actual) {
           const fresco = await dbUsuarios.obtener(actual.id);
-          set({ usuario: fresco?.activo ? fresco : null });
-        }
-
-        // Si no hay usuario logueado, auto-login como admin
-        if (!get().usuario) {
-          const admin = await dbUsuarios.obtenerPorNombre('Marcelo');
-          if (admin?.activo) {
-            set({ usuario: admin });
+          if (fresco?.activo) {
+            if (fresco.sessionToken && fresco.sessionExpiresAt) {
+              const valida = await dbUsuarios.validarSesion(fresco.id, fresco.deviceId || '', fresco.sessionToken);
+              if (!valida) {
+                set({ usuario: null });
+                return;
+              }
+            }
+            set({ usuario: fresco });
+          } else {
+            set({ usuario: null });
           }
         }
 
         set({ inicializado: true });
       },
 
-      async login(nombre, pin) {
-        const res = await dbUsuarios.verificarPin(nombre, pin);
+      async login(nombre, pin, deviceId) {
+        const res = await dbUsuarios.verificarPin(nombre, pin, deviceId);
         if (!res.ok || !res.usuario) return { ok: false, error: res.error };
-        set({ usuario: res.usuario });
+
+        const { sessionToken } = await dbUsuarios.iniciarSesion(res.usuario.id, deviceId);
+        const usuarioActualizado = { ...res.usuario, sessionToken };
+        set({ usuario: usuarioActualizado });
         return { ok: true };
       },
 
-      logout() {
+      async logout() {
+        const actual = get().usuario;
+        if (actual?.sessionToken) {
+          await dbUsuarios.cerrarSesion(actual.id);
+        }
         set({ usuario: null });
       },
 
@@ -69,10 +78,21 @@ export const useAuthStore = create<AuthState>()(
       esAdmin() {
         return get().usuario?.rol === 'admin';
       },
+
+      async validarSesion() {
+        const actual = get().usuario;
+        if (!actual?.sessionToken) return true;
+        
+        const valida = await dbUsuarios.validarSesion(actual.id, actual.deviceId || '', actual.sessionToken);
+        if (!valida) {
+          await get().logout();
+          return false;
+        }
+        return true;
+      },
     }),
     {
       name: 'stockmaster-auth',
-      // Solo persistimos el usuario.
       partialize: (state): PersistedAuthState => ({ usuario: state.usuario }),
       onRehydrateStorage: () => (state) => {
         if (state) state._hasHydrated = true;

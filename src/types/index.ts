@@ -102,7 +102,13 @@ export interface Usuario {
   rol: RolUsuario;
   activo: boolean;
   createdAt: number;
+  // Control de dispositivo único
+  deviceId?: string;
+  sessionToken?: string;
+  lastLoginAt?: number;
+  sessionExpiresAt?: number;
 }
+
 
 export interface Conteo {
   id: string;

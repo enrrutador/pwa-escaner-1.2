@@ -56,15 +56,83 @@ export const dbUsuarios = {
   async verificarPin(
     nombre: string,
     pin: string,
+    deviceId?: string,
   ): Promise<{ ok: boolean; usuario?: Usuario; error?: string }> {
     const usuario = await this.obtenerPorNombre(nombre);
     if (!usuario || !usuario.activo) return { ok: false, error: 'Usuario no encontrado' };
     const hash = await hashPin(pin);
     if (hash !== usuario.pinHash) return { ok: false, error: 'PIN incorrecto' };
+    
+    // Verificar dispositivo único
+    if (deviceId) {
+      if (usuario.deviceId && usuario.deviceId !== deviceId) {
+        return { ok: false, error: 'Este usuario ya está registrado en otro dispositivo' };
+      }
+      // Verificar sesión activa
+      if (usuario.sessionExpiresAt && usuario.sessionExpiresAt > Date.now()) {
+        if (usuario.deviceId && usuario.deviceId !== deviceId) {
+          return { ok: false, error: 'Sesión activa en otro dispositivo' };
+        }
+      }
+    }
+    
     return { ok: true, usuario };
   },
 
   async hayUsuarios(): Promise<boolean> {
     return (await db.usuarios.count()) > 0;
+  },
+
+  // Iniciar sesión: registrar dispositivo y crear token de sesión
+  async iniciarSesion(
+    usuarioId: string,
+    deviceId: string,
+    duracionDias: number = 30,
+  ): Promise<{ sessionToken: string; expiraEn: number }> {
+    const sessionToken = 'st_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const expiraEn = Date.now() + duracionDias * 24 * 60 * 60 * 1000;
+    await db.usuarios.update(usuarioId, {
+      deviceId,
+      sessionToken,
+      lastLoginAt: Date.now(),
+      sessionExpiresAt: expiraEn,
+    });
+    return { sessionToken, expiraEn };
+  },
+
+  // Cerrar sesión (limpiar token pero mantener deviceId para re-login rápido)
+  async cerrarSesion(usuarioId: string): Promise<void> {
+    await db.usuarios.update(usuarioId, {
+      sessionToken: undefined,
+      sessionExpiresAt: undefined,
+    });
+  },
+
+  // Revocar acceso (admin): limpiar todo, desactivar usuario
+  async revocarAcceso(usuarioId: string): Promise<void> {
+    await db.usuarios.update(usuarioId, {
+      activo: false,
+      deviceId: undefined,
+      sessionToken: undefined,
+      sessionExpiresAt: undefined,
+    });
+  },
+
+  // Verificar si sesión es válida
+  async validarSesion(usuarioId: string, deviceId: string, sessionToken: string): Promise<boolean> {
+    const usuario = await this.obtener(usuarioId);
+    if (!usuario || !usuario.activo) return false;
+    if (usuario.sessionToken !== sessionToken) return false;
+    if (usuario.deviceId !== deviceId) return false;
+    if (usuario.sessionExpiresAt && usuario.sessionExpiresAt < Date.now()) return false;
+    return true;
+  },
+
+  // Admin: extender sesión
+  async extenderSesion(usuarioId: string, diasExtra: number): Promise<void> {
+    const usuario = await this.obtener(usuarioId);
+    if (!usuario) throw new Error('Usuario no encontrado');
+    const nuevaExpiracion = (usuario.sessionExpiresAt || Date.now()) + diasExtra * 24 * 60 * 60 * 1000;
+    await db.usuarios.update(usuarioId, { sessionExpiresAt: nuevaExpiracion });
   },
 };

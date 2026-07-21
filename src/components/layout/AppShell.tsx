@@ -1,9 +1,10 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FloatingScannerFab } from '@/components/common/FloatingScannerFab';
+import { useAuthStore } from '@/store/authStore';
 
 const NAV = [
   { href: '/', label: 'PANEL', icon: 'layout-dashboard' },
@@ -13,6 +14,8 @@ const NAV = [
 ];
 
 function TopBar({ pathname }: { pathname: string }) {
+  const { usuario, esAdmin, logout } = useAuthStore();
+  const router = useRouter();
   const titles: Record<string, { icon: string; text: string; mode: 'brand' | 'title' }> = {
     '/': { icon: 'boxes', text: 'StockMaster', mode: 'brand' },
     '/inventario': { icon: 'package-2', text: 'PRODUCTOS', mode: 'title' },
@@ -20,6 +23,7 @@ function TopBar({ pathname }: { pathname: string }) {
     '/scanner': { icon: 'scan-barcode', text: 'ESCANEAR', mode: 'title' },
     '/historial': { icon: 'boxes', text: 'StockMaster', mode: 'brand' },
     '/ajustes': { icon: 'boxes', text: 'StockMaster', mode: 'brand' },
+    '/admin': { icon: 'shield', text: 'ADMIN', mode: 'title' },
   };
 
   const cfg = titles[pathname] || titles['/'];
@@ -36,9 +40,21 @@ function TopBar({ pathname }: { pathname: string }) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
             StockMaster
           </div>
-          <button className="icon-btn" aria-label="Alertas">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {esAdmin() && (
+              <Link href="/admin" className="icon-btn" aria-label="Admin" title="Panel admin">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+              </Link>
+            )}
+            <button
+              className="icon-btn"
+              aria-label="Cerrar sesión"
+              title={`Cerrar sesión (${usuario?.nombre || ''})`}
+              onClick={async () => { await logout(); router.replace('/login'); }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+            </button>
+          </div>
         </>
       ) : isProductDetail ? (
         <>
@@ -89,6 +105,22 @@ function BottomNav({ pathname }: { pathname: string }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { usuario, inicializado } = useAuthStore();
+
+  useEffect(() => {
+    if (!inicializado) return;
+    if (!usuario && pathname !== '/login') {
+      router.replace('/login');
+    }
+    if (usuario && pathname === '/login') {
+      router.replace('/');
+    }
+  }, [inicializado, usuario, pathname, router]);
+
+  if (!usuario && pathname !== '/login' && inicializado) {
+    return null;
+  }
 
   return (
     <div className="app">

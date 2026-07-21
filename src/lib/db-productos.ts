@@ -7,6 +7,7 @@ import type { Producto, PaginatedResult, TipoMovimiento } from '@/types';
 import { PAGE_SIZE_DEFAULT } from '@/types';
 import { dbAlertas } from './db-alertas';
 import { eventBus } from './eventBus';
+import { checkAuth } from './auth-guard';
 
 interface ListarArgs {
   pagina?: number;
@@ -77,6 +78,8 @@ export const dbProductos = {
     data: Omit<Producto, 'id' | 'createdAt' | 'updatedAt' | 'activo'> &
       Partial<Pick<Producto, 'activo'>>,
   ): Promise<Producto> {
+    const auth = await checkAuth('productos:crear');
+    if (!auth.ok) throw new Error(auth.error || 'Sin permisos');
     const producto: Producto = {
       id: uid(),
       activo: true,
@@ -91,6 +94,8 @@ export const dbProductos = {
   },
 
   async actualizar(id: string, data: Partial<Producto>): Promise<void> {
+    const auth = await checkAuth('productos:editar');
+    if (!auth.ok) throw new Error(auth.error || 'Sin permisos');
     await db.productos.update(id, { ...data, updatedAt: now() });
     const p = await db.productos.get(id);
     if (p) await dbAlertas.evaluarProducto(p);
@@ -99,6 +104,8 @@ export const dbProductos = {
 
   /** Soft delete. */
   async eliminar(id: string): Promise<void> {
+    const auth = await checkAuth('productos:eliminar');
+    if (!auth.ok) throw new Error(auth.error || 'Sin permisos');
     await db.productos.update(id, { activo: false, updatedAt: now() });
     eventBus.emit();
   },
@@ -115,6 +122,8 @@ export const dbProductos = {
     motivo: string,
     usuarioId: string,
   ): Promise<Producto> {
+    const auth = await checkAuth('stock:ajustar');
+    if (!auth.ok) throw new Error(auth.error || 'Sin permisos');
     return db.transaction('rw', db.productos, db.movimientos, db.alertas, async () => {
       const p = await db.productos.get(id);
       if (!p) throw new Error('Producto no encontrado');
