@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { dbUsuarios } from '@/lib/db-usuarios';
+import { codificarInvitacion } from '@/lib/invitaciones';
+import { hashPin } from '@/lib/utils';
 import type { Usuario, RolUsuario } from '@/types';
 
 export default function AdminPage() {
@@ -17,6 +19,13 @@ export default function AdminPage() {
   const [crearRol, setCrearRol] = useState<RolUsuario>('operador');
   const [crearError, setCrearError] = useState('');
   const [mensaje, setMensaje] = useState('');
+
+  // Modal posterior: mostrar PIN + código al admin tras crear
+  const [showCredOpen, setShowCredOpen] = useState(false);
+  const [showCredNombre, setShowCredNombre] = useState('');
+  const [showCredPin, setShowCredPin] = useState('');
+  const [showCredCodigo, setShowCredCodigo] = useState('');
+  const [copiado, setCopiado] = useState(false);
 
   // Cambiar mi contraseña (admin)
   const [pwdOpen, setPwdOpen] = useState(false);
@@ -59,16 +68,32 @@ export default function AdminPage() {
       return;
     }
     try {
-      await dbUsuarios.crear({ nombre: crearNombre.trim(), pin: crearPin.trim(), rol: crearRol });
+      const nuevo = await dbUsuarios.crear({ nombre: crearNombre.trim(), pin: crearPin.trim(), rol: crearRol });
+      // Generar el pinHash para el código de invitación (usamos el hash que se acaba de guardar)
+      const pinHash = await hashPin(crearPin.trim());
+      const codigo = codificarInvitacion({ nombre: nuevo.nombre, pinHash, rol: nuevo.rol });
       setCrearOpen(false);
+      setShowCredNombre(nuevo.nombre);
+      setShowCredPin(crearPin.trim());
+      setShowCredCodigo(codigo);
+      setShowCredOpen(true);
+      setCopiado(false);
       setCrearNombre('');
       setCrearPin('');
       setCrearRol('operador');
-      setMensaje(`Usuario "${crearNombre.trim()}" creado`);
-      setTimeout(() => setMensaje(''), 3000);
       await cargarUsuarios();
     } catch (err: any) {
       setCrearError(err.message || 'Error al crear usuario');
+    }
+  };
+
+  const copiarCodigo = async () => {
+    try {
+      await navigator.clipboard.writeText(showCredCodigo);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      // fallback: seleccionar manualmente
     }
   };
 
@@ -417,6 +442,70 @@ export default function AdminPage() {
                 <button type="submit" className="btn-primary">Guardar PIN</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showCredOpen && (
+        <div className="modal-overlay" onClick={() => setShowCredOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h2>Usuario creado</h2>
+              <button className="modal-close" onClick={() => setShowCredOpen(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p style={{ color: 'var(--text-dim)', fontSize: '.9rem', margin: 0 }}>
+                Compartí estas credenciales con <strong>{showCredNombre}</strong>. Debe ingresar al login, tocar <strong>"¿Tenés código?"</strong> y pegar el código.
+              </p>
+
+              <div style={{
+                padding: 16, borderRadius: 'var(--r-lg)',
+                background: 'var(--surface)', border: '1px solid var(--line-soft)',
+                display: 'flex', flexDirection: 'column', gap: 12,
+              }}>
+                <div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>USUARIO</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{showCredNombre}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>PIN</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: 6, fontFamily: 'monospace' }}>{showCredPin}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-faint)', marginBottom: 4 }}>CÓDIGO DE INVITACIÓN</div>
+                  <div style={{
+                    padding: '10px 12px',
+                    background: 'color-mix(in srgb, var(--primary) 8%, var(--surface))',
+                    border: '1px dashed var(--primary)',
+                    borderRadius: 'var(--r-md)',
+                    fontFamily: 'monospace',
+                    fontSize: '.8rem',
+                    color: 'var(--primary)',
+                    wordBreak: 'break-all',
+                    userSelect: 'all',
+                  }}>
+                    {showCredCodigo}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={copiarCodigo}
+                className="btn-primary"
+                style={{ marginTop: 4 }}
+              >
+                {copiado ? '✓ Código copiado' : '📋 Copiar código'}
+              </button>
+
+              <p style={{ fontSize: '.75rem', color: 'var(--text-faint)', margin: 0, textAlign: 'center' }}>
+                ⚠️ Este código funciona una sola vez por dispositivo. El operador lo pega una vez y luego entra solo con usuario + PIN.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={() => setShowCredOpen(false)}>Cerrar</button>
+            </div>
           </div>
         </div>
       )}

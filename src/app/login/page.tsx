@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { dbUsuarios } from '@/lib/db-usuarios';
+import { canjearInvitacion } from '@/lib/invitaciones';
 
 function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -31,6 +32,34 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [esAdmin, setEsAdmin] = useState(false);
+
+  // Canjear código de invitación
+  const [canjearOpen, setCanjearOpen] = useState(false);
+  const [canjearCodigo, setCanjearCodigo] = useState('');
+  const [canjearError, setCanjearError] = useState('');
+  const [canjearLoading, setCanjearLoading] = useState(false);
+  const [canjearOk, setCanjearOk] = useState<{ nombre: string } | null>(null);
+
+  const handleCanjear = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCanjearError('');
+    if (!canjearCodigo.trim()) { setCanjearError('Pegá el código'); return; }
+    setCanjearLoading(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await canjearInvitacion(canjearCodigo.trim(), deviceId);
+      if (!res.ok || !res.usuario) {
+        setCanjearError(res.error || 'No se pudo canjear');
+        return;
+      }
+      setCanjearOk({ nombre: res.usuario.nombre });
+      setCanjearCodigo('');
+    } catch (err: any) {
+      setCanjearError(err.message || 'Error inesperado');
+    } finally {
+      setCanjearLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (usuario && inicializado) {
@@ -216,7 +245,89 @@ export default function LoginPage() {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
+
+        <button
+          onClick={() => { setCanjearOpen(true); setCanjearError(''); setCanjearOk(null); }}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--primary)', fontSize: '.85rem',
+            padding: 8, marginTop: -8,
+          }}
+        >
+          ¿Tenés código de invitación?
+        </button>
       </div>
+
+      {canjearOpen && (
+        <div className="modal-overlay" onClick={() => setCanjearOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>Canjear código de invitación</h2>
+              <button className="modal-close" onClick={() => setCanjearOpen(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            {canjearOk ? (
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: 24, textAlign: 'center' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 'var(--r-full)', background: 'color-mix(in srgb, var(--success) 20%, transparent)', display: 'grid', placeItems: 'center', color: 'var(--success)' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: '1rem', fontWeight: 600 }}>¡Cuenta cargada!</div>
+                  <div style={{ fontSize: '.85rem', color: 'var(--text-faint)', marginTop: 4 }}>
+                    Ahora podés ingresar como <strong>{canjearOk.nombre}</strong> con tu PIN.
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  onClick={() => {
+                    setCanjearOpen(false);
+                    setCanjearOk(null);
+                    setNombre(canjearOk.nombre);
+                  }}
+                >
+                  Cerrar y entrar
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleCanjear}>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <p style={{ fontSize: '.85rem', color: 'var(--text-dim)', margin: 0 }}>
+                    Pegá el código que te pasó el admin. Tu cuenta se va a cargar en este dispositivo.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CÓDIGO</label>
+                    <textarea
+                      value={canjearCodigo}
+                      onChange={(e) => setCanjearCodigo(e.target.value)}
+                      placeholder="STK1-..."
+                      autoFocus
+                      rows={3}
+                      style={{
+                        padding: '12px 14px', borderRadius: 'var(--r-lg)',
+                        border: '1px solid var(--line-soft)', background: 'var(--surface)',
+                        fontSize: '.8rem', fontFamily: 'monospace', color: 'var(--text)',
+                        outline: 'none', resize: 'none', wordBreak: 'break-all',
+                      }}
+                    />
+                  </div>
+                  {canjearError && (
+                    <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>
+                      {canjearError}
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn-ghost" onClick={() => setCanjearOpen(false)}>Cancelar</button>
+                  <button type="submit" className="btn-primary" disabled={canjearLoading}>
+                    {canjearLoading ? 'Cargando...' : 'Cargar cuenta'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
