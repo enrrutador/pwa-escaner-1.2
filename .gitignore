@@ -1,5 +1,12 @@
 node_modules/
 .next/
+.vercel/
 *.log
 .DS_Store
 *.local
+.env*
+*.pem
+*.tsbuildinfo
+coverage/
+.idea/
+.vscode/
