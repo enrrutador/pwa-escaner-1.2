@@ -156,4 +156,24 @@ export const usersKv = {
     if (u.sessionExpiresAt && u.sessionExpiresAt < Date.now()) return false;
     return true;
   },
+
+  async validarSesionPorDispositivo(correo: string, deviceId: string): Promise<UsuarioKv | null> {
+    const u = await this.obtener(correo);
+    if (!u || !u.activo) return null;
+    if (!u.sessionToken || !u.sessionExpiresAt) return null;
+    if (u.sessionExpiresAt < Date.now()) return null;
+    if (u.deviceId !== deviceId) return null;
+    return u;
+  },
+
+  // Admin: desvincular dispositivo de un usuario (para que pueda loguear en otro)
+  async limpiarDispositivo(correo: string): Promise<void> {
+    const r = kv();
+    const u = await r.get<UsuarioKv>(key(correo));
+    if (!u) throw new Error('Usuario no encontrado');
+    u.deviceId = undefined;
+    u.sessionToken = undefined;
+    u.sessionExpiresAt = undefined;
+    await r.set(key(correo), u);
+  },
 };

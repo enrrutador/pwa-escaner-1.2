@@ -9,8 +9,6 @@ export interface UsuarioApi {
   rol: RolUsuario;
   activo: boolean;
   createdAt: number;
-  deviceId?: string;
-  sessionToken?: string;
   lastLoginAt?: number;
   sessionExpiresAt?: number;
 }
@@ -55,34 +53,28 @@ export const useAuthStore = create<AuthState>()(
       _hasHydrated: false,
 
       async inicializar() {
-        // Asegurar que el admin Marcelo exista en el backend (seed)
         try {
           await fetch('/api/auth/seed', { method: 'POST' });
         } catch {}
 
-        // Si hay usuario persistido, validar sesión contra el backend
         const actual = get().usuario;
-        if (actual?.sessionToken && actual?.correo) {
+        if (actual?.correo) {
           try {
             const res = await fetch('/api/auth/validate', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                correo: actual.correo,
-                deviceId: getDeviceId(),
-                sessionToken: actual.sessionToken,
-              }),
+              credentials: 'include',
             });
             const data = await res.json();
-            if (!data.ok) {
+            if (!res.ok || !data.ok) {
               set({ usuario: null });
               set({ inicializado: true });
               return;
             }
-            // Refrescar datos por si cambiaron
             set({ usuario: data.usuario });
+            set({ inicializado: true });
+            return;
           } catch {
-            // Sin conexión: mantener usuario persistido (offline-first para sesión ya abierta)
+            // Sin conexion: mantener usuario en memoria (no validamos)
           }
         }
         set({ inicializado: true });
@@ -93,6 +85,7 @@ export const useAuthStore = create<AuthState>()(
           const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ correo, password, deviceId }),
           });
           const data = await res.json();
@@ -107,16 +100,14 @@ export const useAuthStore = create<AuthState>()(
       },
 
       async logout() {
-        const actual = get().usuario;
-        if (actual?.correo) {
-          try {
-            await fetch('/api/auth/logout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ correo: actual.correo }),
-            });
-          } catch {}
-        }
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ correo: get().usuario?.correo || '' }),
+          });
+        } catch {}
         set({ usuario: null });
       },
 
@@ -140,12 +131,8 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// Helper para headers de autorización admin
-export function adminHeaders(usuario: UsuarioApi | null): HeadersInit {
-  return {
-    'Content-Type': 'application/json',
-    'x-user-correo': usuario?.correo || '',
-    'x-user-token': usuario?.sessionToken || '',
-    'x-user-device': getDeviceId(),
-  };
+// Cookie httpOnly no es accesible desde cliente; las APIs leen cookie automaticamente.
+// adminHeaders queda deprecado pero lo dejamos como helper vacio por compat.
+export function adminHeaders(_usuario: UsuarioApi | null): HeadersInit {
+  return { 'Content-Type': 'application/json' };
 }

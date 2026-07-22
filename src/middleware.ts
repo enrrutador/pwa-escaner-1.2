@@ -1,0 +1,93 @@
+// src/middleware.ts
+import { NextResponse, type NextRequest } from 'next/server';
+import { leerCookieSesion } from '@/lib/server/session';
+
+// Rutas publicas (no requieren sesion)
+const PUBLICAS = ['/login'];
+const API_PUBLICAS = ['/api/auth/login', '/api/auth/logout', '/api/auth/seed'];
+
+// Origins permitidos
+const ALLOWED_ORIGINS = [
+  'https://stockmaster-eta.vercel.app',
+  'http://localhost:3000',
+];
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Vary': 'Origin',
+    };
+  }
+  return {};
+}
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  const origin = req.headers.get('origin');
+
+  // OPTIONS preflight
+  if (req.method === 'OPTIONS') {
+    const res = NextResponse.next();
+    for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
+    return res;
+  }
+
+  // API de auth son publicas
+  if (API_PUBLICAS.some((p) => pathname.startsWith(p))) {
+    const res = NextResponse.next();
+    for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
+    return res;
+  }
+
+  // Otras API requieren cookie valida
+  if (pathname.startsWith('/api/')) {
+    const payload = leerCookieSesion(req.headers.get('cookie'));
+    if (!payload) {
+      const res = NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 });
+      for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
+      return res;
+    }
+    const res = NextResponse.next();
+    for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
+    return res;
+  }
+
+  // Rutas publicas de pages
+  if (PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    return NextResponse.next();
+  }
+
+  // Archivos estaticos (_next, favicon, icons, manifest, sw.js) son publicos
+  if (
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/icons/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/sw.js' ||
+    pathname === '/robots.txt'
+  ) {
+    return NextResponse.next();
+  }
+
+  // Resto: requiere cookie
+  const payload = leerCookieSesion(req.headers.get('cookie'));
+  if (!payload) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    // Aplicar a todo excepto assets estaticos internos
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};

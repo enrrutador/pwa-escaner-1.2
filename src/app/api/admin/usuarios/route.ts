@@ -1,29 +1,33 @@
 // /api/admin/usuarios — GET lista usuarios, POST crea nuevo.
-// Autorización: se valida que el caller sea admin con sesión válida contra Redis.
+// Autorización: cookie httpOnly firmada (sm_session) + rol admin.
+// Rate limited: 10 por IP por minuto.
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
+import { leerCookieSesion } from '@/lib/server/session';
+import { ratelimitAdmin, clientIp, checkRatelimit } from '@/lib/server/ratelimit';
+import { crearUsuarioSchema } from '@/lib/server/schemas';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-async function authAdmin(req: Request): Promise<boolean> {
-  const correo = req.headers.get('x-user-correo');
-  const token = req.headers.get('x-user-token');
-  const deviceId = req.headers.get('x-user-device');
-  if (!correo || !token || !deviceId) return false;
-  const ok = await usersKv.validarSesion(correo, deviceId, token);
-  if (!ok) return false;
-  const u = await usersKv.obtener(correo);
+async function authAdmin(req: Request) {
+  const payload = leerCookieSesion(req.headers.get('cookie'));
+  if (!payload || payload.rol !== 'admin') return false;
+  const u = await usersKv.obtener(payload.correo);
   return !!u && u.rol === 'admin' && u.activo;
 }
 
 export async function GET(req: Request) {
   try {
+    const ip = clientIp(req);
+    const rl = await checkRatelimit(ratelimitAdmin, ip);
+    if (!rl.ok) {
+      return NextResponse.json({ ok: false, error: 'Rate limit' }, { status: 429 });
+    }
     if (!(await authAdmin(req))) {
       return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 403 });
     }
     const list = await usersKv.listar();
-    // No devolvemos passwordHash al cliente.
     const safe = list.map((u) => ({
       id: u.id,
       correo: u.correo,
@@ -43,19 +47,30 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const ip = clientIp(req);
+    const rl = await checkRatelimit(ratelimitAdmin, ip);
+    if (!rl.ok) {
+      return NextResponse.json({ ok: false, error: 'Rate limit' }, { status: 429 });
+    }
     if (!(await authAdmin(req))) {
       return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 403 });
     }
-    const { correo, nombre, password, rol } = await req.json();
-    if (!correo || !nombre || !password || !rol) {
-      return NextResponse.json({ ok: false, error: 'Faltan datos' }, { status: 400 });
+    const body = await req.json();
+    const parsed = crearUsuarioSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, error: parsed.error.issues[0]?.message || 'Datos invalidos' },
+        { status: 400 },
+      );
     }
-    if (!['admin', 'operador', 'viewer'].includes(rol)) {
-      return NextResponse.json({ ok: false, error: 'Rol inválido' }, { status: 400 });
-    }
+    const { correo, nombre, password, rol } = parsed.data;
     const nuevo = await usersKv.crear({ correo, nombre, password, rol });
-    return NextResponse.json({ ok: true, usuario: nuevo });
+    return NextResponse.json({
+      ok: true,
+      usuario: { id: nuevo.id, correo: nuevo.correo, nombre: nuevo.nombre, rol: nuevo.rol, createdAt: nuevo.createdAt },
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
+
