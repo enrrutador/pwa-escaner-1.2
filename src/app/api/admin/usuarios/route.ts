@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function authAdmin(req: Request) {
-  const payload = leerCookieSesion(req.headers.get('cookie'));
+  const payload = await leerCookieSesion(req.headers.get('cookie'));
   if (!payload || payload.rol !== 'admin') return false;
   const u = await usersKv.obtener(payload.correo);
   return !!u && u.rol === 'admin' && u.activo;

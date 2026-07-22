@@ -2,11 +2,16 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { leerCookieSesion } from '@/lib/server/session';
 
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+
 // Rutas publicas (no requieren sesion)
 const PUBLICAS = ['/login'];
 const API_PUBLICAS = ['/api/auth/login', '/api/auth/logout', '/api/auth/seed'];
 
-// Origins permitidos
 const ALLOWED_ORIGINS = [
   'https://stockmaster-eta.vercel.app',
   'http://localhost:3000',
@@ -29,7 +34,6 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const origin = req.headers.get('origin');
 
-  // OPTIONS preflight
   if (req.method === 'OPTIONS') {
     const res = NextResponse.next();
     for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
@@ -45,7 +49,7 @@ export async function middleware(req: NextRequest) {
 
   // Otras API requieren cookie valida
   if (pathname.startsWith('/api/')) {
-    const payload = leerCookieSesion(req.headers.get('cookie'));
+    const payload = await leerCookieSesion(req.headers.get('cookie'));
     if (!payload) {
       const res = NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 });
       for (const [k, v] of Object.entries(corsHeaders(origin))) res.headers.set(k, v);
@@ -61,7 +65,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Archivos estaticos (_next, favicon, icons, manifest, sw.js) son publicos
+  // Archivos estaticos
   if (
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/icons/') ||
@@ -74,7 +78,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Resto: requiere cookie
-  const payload = leerCookieSesion(req.headers.get('cookie'));
+  const payload = await leerCookieSesion(req.headers.get('cookie'));
   if (!payload) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
@@ -84,10 +88,3 @@ export async function middleware(req: NextRequest) {
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: [
-    // Aplicar a todo excepto assets estaticos internos
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
-};

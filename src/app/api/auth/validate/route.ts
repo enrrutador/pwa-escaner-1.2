@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const cookie = req.headers.get('cookie');
-    const payload = leerCookieSesion(cookie);
+    const payload = await leerCookieSesion(cookie);
     if (!payload) return NextResponse.json({ ok: false }, { status: 401 });
 
     const usuario = await usersKv.validarSesionPorDispositivo(payload.correo, payload.deviceId);

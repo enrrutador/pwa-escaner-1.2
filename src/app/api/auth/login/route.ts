@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     }
     const sesion = await usersKv.iniciarSesion(correo, deviceId);
 
-    const cookie = crearCookieSesion({
+    const cookie = await crearCookieSesion({
       correo,
       deviceId,
       rol: sesion.usuario.rol,
