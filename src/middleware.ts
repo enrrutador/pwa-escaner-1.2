@@ -9,7 +9,7 @@ export const config = {
 };
 
 // Rutas publicas (no requieren sesion)
-const PUBLICAS = ['/login'];
+const PUBLICAS = ['/login', '/admin/login'];
 const API_PUBLICAS = ['/api/auth/login', '/api/auth/logout'];
 
 const SUPER_ADMIN = process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'atenciafab@gmail.com';
