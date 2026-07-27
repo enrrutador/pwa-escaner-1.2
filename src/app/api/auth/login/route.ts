@@ -1,5 +1,3 @@
-// /api/auth/login — valida contra Redis, firma cookie httpOnly, registra deviceId en Redis.
-// Rate limited: 5 intentos por IP por minuto.
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
 import { crearCookieSesion } from '@/lib/server/session';
@@ -8,6 +6,8 @@ import { loginSchema } from '@/lib/server/schemas';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const SUPER_ADMIN = process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'atenciafab@gmail.com';
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +52,8 @@ export async function POST(req: Request) {
         createdAt: sesion.usuario.createdAt,
         lastLoginAt: sesion.usuario.lastLoginAt,
         sessionExpiresAt: sesion.usuario.sessionExpiresAt,
+        superAdmin: sesion.usuario.correo === SUPER_ADMIN,
+        tenantId: sesion.usuario.tenantId,
       },
     });
     res2.headers.set('Set-Cookie', cookie);

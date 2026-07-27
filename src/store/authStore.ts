@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { PERMISOS_POR_ROL, type Permiso, type RolUsuario } from '@/types';
+import { setCurrentTenant } from '@/lib/db';
 
 export interface UsuarioApi {
   id: string;
@@ -11,6 +12,8 @@ export interface UsuarioApi {
   createdAt: number;
   lastLoginAt?: number;
   sessionExpiresAt?: number;
+  superAdmin?: boolean;
+  tenantId?: string;
 }
 
 interface AuthState {
@@ -22,6 +25,7 @@ interface AuthState {
   logout: () => Promise<void>;
   tienePermiso: (permiso: Permiso) => boolean;
   esAdmin: () => boolean;
+  esSuperAdmin: () => boolean;
 }
 
 interface PersistedAuthState {
@@ -67,6 +71,7 @@ export const useAuthStore = create<AuthState>()(
               return;
             }
             set({ usuario: data.usuario });
+            if (data.usuario?.tenantId) setCurrentTenant(data.usuario.tenantId);
             set({ inicializado: true });
             return;
           } catch {
@@ -89,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
             return { ok: false, error: data.error || 'Error al iniciar sesión' };
           }
           set({ usuario: data.usuario });
+          if (data.usuario?.tenantId) setCurrentTenant(data.usuario.tenantId);
           return { ok: true };
         } catch (e: any) {
           return { ok: false, error: 'Sin conexión al servidor' };
@@ -115,6 +121,9 @@ export const useAuthStore = create<AuthState>()(
 
       esAdmin() {
         return get().usuario?.rol === 'admin';
+      },
+      esSuperAdmin() {
+        return get().usuario?.superAdmin === true;
       },
     }),
     {

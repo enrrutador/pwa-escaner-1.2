@@ -1,6 +1,3 @@
-// /api/admin/usuarios — GET lista usuarios, POST crea nuevo.
-// Autorización: cookie httpOnly firmada (sm_session) + rol admin.
-// Rate limited: 10 por IP por minuto.
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
 import { leerCookieSesion } from '@/lib/server/session';
@@ -10,11 +7,12 @@ import { crearUsuarioSchema } from '@/lib/server/schemas';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-async function authAdmin(req: Request) {
+const SUPER_ADMIN = process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'atenciafab@gmail.com';
+
+async function authSuperAdmin(req: Request) {
   const payload = await leerCookieSesion(req.headers.get('cookie'));
-  if (!payload || payload.rol !== 'admin') return false;
-  const u = await usersKv.obtener(payload.correo);
-  return !!u && u.rol === 'admin' && u.activo;
+  if (!payload) return false;
+  return payload.correo === SUPER_ADMIN;
 }
 
 export async function GET(req: Request) {
@@ -24,7 +22,7 @@ export async function GET(req: Request) {
     if (!rl.ok) {
       return NextResponse.json({ ok: false, error: 'Rate limit' }, { status: 429 });
     }
-    if (!(await authAdmin(req))) {
+    if (!(await authSuperAdmin(req))) {
       return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 403 });
     }
     const list = await usersKv.listar();
@@ -38,6 +36,7 @@ export async function GET(req: Request) {
       deviceId: u.deviceId,
       lastLoginAt: u.lastLoginAt,
       sessionExpiresAt: u.sessionExpiresAt,
+      tenantId: u.tenantId,
     }));
     return NextResponse.json({ ok: true, usuarios: safe });
   } catch (e: any) {
@@ -52,7 +51,7 @@ export async function POST(req: Request) {
     if (!rl.ok) {
       return NextResponse.json({ ok: false, error: 'Rate limit' }, { status: 429 });
     }
-    if (!(await authAdmin(req))) {
+    if (!(await authSuperAdmin(req))) {
       return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 403 });
     }
     const body = await req.json();
@@ -63,11 +62,11 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { correo, nombre, password, rol } = parsed.data;
-    const nuevo = await usersKv.crear({ correo, nombre, password, rol });
+    const { correo, nombre, password, rol, tenantId } = parsed.data;
+    const nuevo = await usersKv.crear({ correo, nombre, password, rol, tenantId });
     return NextResponse.json({
       ok: true,
-      usuario: { id: nuevo.id, correo: nuevo.correo, nombre: nuevo.nombre, rol: nuevo.rol, createdAt: nuevo.createdAt },
+      usuario: { id: nuevo.id, correo: nuevo.correo, nombre: nuevo.nombre, rol: nuevo.rol, tenantId: nuevo.tenantId, createdAt: nuevo.createdAt },
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });

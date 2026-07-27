@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore, adminHeaders, type UsuarioApi } from '@/store/authStore';
+import { useAuthStore, adminHeaders } from '@/store/authStore';
 import type { RolUsuario } from '@/types';
 
 interface UsuarioAdmin {
@@ -15,11 +15,23 @@ interface UsuarioAdmin {
   deviceId?: string;
   lastLoginAt?: number;
   sessionExpiresAt?: number;
+  tenantId?: string;
+}
+
+interface TenantItem {
+  id: string;
+  nombre: string;
+  correoContacto: string;
+  activo: boolean;
+  createdAt: number;
 }
 
 export default function AdminPage() {
   const router = useRouter();
-  const { usuario, esAdmin, inicializado } = useAuthStore();
+  const { usuario, esSuperAdmin, inicializado } = useAuthStore();
+  const [tab, setTab] = useState<'usuarios' | 'tenants'>('usuarios');
+
+  // Usuarios
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [mensaje, setMensaje] = useState('');
@@ -30,40 +42,55 @@ export default function AdminPage() {
   const [cNombre, setCNombre] = useState('');
   const [cPassword, setCPassword] = useState('');
   const [cRol, setCRol] = useState<RolUsuario>('operador');
+  const [cTenantId, setCTenantId] = useState('');
   const [crearError, setCrearError] = useState('');
   const [crearLoading, setCrearLoading] = useState(false);
 
-  // Cambiar mi contraseña
-  const [pwdOpen, setPwdOpen] = useState(false);
-  const [pwdNueva, setPwdNueva] = useState('');
-  const [pwdConfirm, setPwdConfirm] = useState('');
-  const [pwdError, setPwdError] = useState('');
-
-  // Cambiar password de un usuario
+  // Cambiar contraseña de un usuario
   const [usrOpen, setUsrOpen] = useState(false);
   const [usrTarget, setUsrTarget] = useState<UsuarioAdmin | null>(null);
   const [usrPass, setUsrPass] = useState('');
   const [usrConfirm, setUsrConfirm] = useState('');
   const [usrError, setUsrError] = useState('');
 
+  // Tenants
+  const [tenants, setTenants] = useState<TenantItem[]>([]);
+  const [tLoading, setTLoading] = useState(false);
+  const [tOpen, setTOpen] = useState(false);
+  const [tNombre, setTNombre] = useState('');
+  const [tCorreo, setTCorreo] = useState('');
+  const [tError, setTError] = useState('');
+
   const cargarUsuarios = useCallback(async () => {
-    if (!inicializado || !esAdmin() || !usuario) return;
+    if (!inicializado || !esSuperAdmin() || !usuario) return;
     try {
       const res = await fetch('/api/admin/usuarios', { headers: adminHeaders(usuario) });
       const data = await res.json();
       if (data.ok) setUsuarios(data.usuarios);
     } catch {}
     setLoading(false);
-  }, [inicializado, esAdmin, usuario]);
+  }, [inicializado, esSuperAdmin, usuario]);
+
+  const cargarTenants = useCallback(async () => {
+    if (!inicializado || !esSuperAdmin() || !usuario) return;
+    setTLoading(true);
+    try {
+      const res = await fetch('/api/admin/tenants', { headers: adminHeaders(usuario) });
+      const data = await res.json();
+      if (data.ok) setTenants(data.tenants);
+    } catch {}
+    setTLoading(false);
+  }, [inicializado, esSuperAdmin, usuario]);
 
   useEffect(() => {
     if (!inicializado) return;
-    if (!esAdmin()) {
+    if (!esSuperAdmin()) {
       router.replace('/');
       return;
     }
     cargarUsuarios();
-  }, [inicializado, esAdmin, router, cargarUsuarios]);
+    cargarTenants();
+  }, [inicializado, esSuperAdmin, router, cargarUsuarios, cargarTenants]);
 
   const flash = (m: string, ms = 3000) => {
     setMensaje(m);
@@ -83,15 +110,17 @@ export default function AdminPage() {
     }
     setCrearLoading(true);
     try {
+      const body: Record<string, any> = {
+        correo: cCorreo.trim(),
+        nombre: cNombre.trim(),
+        password: cPassword,
+        rol: cRol,
+      };
+      if (cTenantId) body.tenantId = cTenantId;
       const res = await fetch('/api/admin/usuarios', {
         method: 'POST',
         headers: adminHeaders(usuario),
-        body: JSON.stringify({
-          correo: cCorreo.trim(),
-          nombre: cNombre.trim(),
-          password: cPassword,
-          rol: cRol,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -110,27 +139,7 @@ export default function AdminPage() {
   };
 
   const resetCrear = () => {
-    setCCorreo(''); setCNombre(''); setCPassword(''); setCRol('operador'); setCrearError('');
-  };
-
-  const handleMiPwd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdError('');
-    if (pwdNueva.length < 8) { setPwdError('Mínimo 8 caracteres'); return; }
-    if (pwdNueva !== pwdConfirm) { setPwdError('Las contraseñas no coinciden'); return; }
-    try {
-      const res = await fetch(`/api/admin/usuarios/${encodeURIComponent(usuario!.correo)}`, {
-        method: 'PUT',
-        headers: adminHeaders(usuario),
-        body: JSON.stringify({ password: pwdNueva }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setPwdError(data.error || 'Error'); return; }
-      setPwdOpen(false); setPwdNueva(''); setPwdConfirm('');
-      flash('Tu contraseña fue actualizada');
-    } catch (err: any) {
-      setPwdError(err.message);
-    }
+    setCCorreo(''); setCNombre(''); setCPassword(''); setCRol('operador'); setCTenantId(''); setCrearError('');
   };
 
   const handleUsrPwd = async (e: React.FormEvent) => {
@@ -153,6 +162,26 @@ export default function AdminPage() {
     }
   };
 
+  const handleCrearTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTError('');
+    if (!tNombre.trim() || !tCorreo.trim()) { setTError('Completá todos los campos'); return; }
+    try {
+      const res = await fetch('/api/admin/tenants', {
+        method: 'POST',
+        headers: adminHeaders(usuario),
+        body: JSON.stringify({ nombre: tNombre.trim(), correoContacto: tCorreo.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setTError(data.error || 'Error'); return; }
+      setTOpen(false); setTNombre(''); setTCorreo('');
+      flash(`Tenant "${tNombre.trim()}" creado`);
+      await cargarTenants();
+    } catch (err: any) {
+      setTError(err.message);
+    }
+  };
+
   if (!inicializado) {
     return (
       <div className="screen active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
@@ -160,7 +189,7 @@ export default function AdminPage() {
       </div>
     );
   }
-  if (!esAdmin()) return null;
+  if (!esSuperAdmin()) return null;
 
   const fmt = (ts?: number) => ts ? new Date(ts).toLocaleDateString('es-AR') + ' ' + new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
 
@@ -171,22 +200,16 @@ export default function AdminPage() {
           <p className="eyebrow">Admin</p>
           <h1 className="h-page">Administración</h1>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn-ghost"
-            onClick={() => { setPwdOpen(true); setPwdNueva(''); setPwdConfirm(''); setPwdError(''); }}
-            style={{ height: 44 }}
-          >
-            🔑 Cambiar mi contraseña
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => { setCrearOpen(true); resetCrear(); }}
-            style={{ height: 44 }}
-          >
-            + Nuevo usuario
-          </button>
-        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
+        <button className={tab === 'usuarios' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('usuarios')} style={{ height: 40 }}>
+          Usuarios
+        </button>
+        <button className={tab === 'tenants' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('tenants')} style={{ height: 40 }}>
+          Clientes
+        </button>
       </div>
 
       {mensaje && (
@@ -199,12 +222,19 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ========== TAB USUARIOS ========== */}
+      {tab === 'usuarios' && (<>
       {loading ? (
         <div className="empty" style={{ marginTop: 40 }}>
           <p>Cargando usuarios...</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn-primary" onClick={() => { setCrearOpen(true); resetCrear(); }} style={{ height: 44 }}>
+              + Nuevo usuario
+            </button>
+          </div>
           {usuarios.map((u) => (
             <div
               key={u.id}
@@ -228,6 +258,7 @@ export default function AdminPage() {
                     }}>
                       {u.rol.toUpperCase()}
                     </span>
+                    {u.tenantId && <span style={{ color: 'var(--text-faint)' }}>Tenant: {u.tenantId.slice(0, 12)}…</span>}
                     <span>Últ. login: {fmt(u.lastLoginAt)}</span>
                   </div>
                 </div>
@@ -244,8 +275,41 @@ export default function AdminPage() {
           ))}
         </div>
       )}
+      </>)}
 
-      {/* Crear usuario */}
+      {/* ========== TAB CLIENTES ========== */}
+      {tab === 'tenants' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+            <button className="btn-primary" onClick={() => { setTOpen(true); setTNombre(''); setTCorreo(''); setTError(''); }} style={{ height: 44 }}>
+              + Nuevo cliente
+            </button>
+          </div>
+          {tLoading ? (
+            <div className="empty" style={{ marginTop: 40 }}><p>Cargando clientes...</p></div>
+          ) : tenants.length === 0 ? (
+            <div className="empty" style={{ marginTop: 40 }}><p>No hay clientes todavía</p></div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+              {tenants.map((t) => (
+                <div key={t.id} style={{
+                  background: 'var(--surface)', borderRadius: 'var(--r-xl)',
+                  padding: 16, border: '1px solid var(--line-soft)',
+                  opacity: t.activo ? 1 : 0.5,
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: '1rem' }}>{t.nombre}</div>
+                  <div style={{ fontSize: '.8rem', color: 'var(--text-faint)', marginTop: 2 }}>{t.correoContacto}</div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-dim)', marginTop: 4 }}>
+                    Creado: {fmt(t.createdAt)} {!t.activo && '(inactivo)'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Modal: Crear usuario */}
       {crearOpen && (
         <div className="modal-overlay" onClick={() => setCrearOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
@@ -259,37 +323,37 @@ export default function AdminPage() {
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NOMBRE</label>
-                  <input
-                    type="text" value={cNombre} onChange={(e) => setCNombre(e.target.value)}
-                    placeholder="Nombre del usuario" autoFocus
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <input type="text" value={cNombre} onChange={(e) => setCNombre(e.target.value)} placeholder="Nombre del usuario" autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CORREO</label>
-                  <input
-                    type="email" value={cCorreo} onChange={(e) => setCCorreo(e.target.value)}
-                    placeholder="nombre@correo.com" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <input type="email" value={cCorreo} onChange={(e) => setCCorreo(e.target.value)} placeholder="nombre@correo.com"
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONTRASEÑA</label>
-                  <input
-                    type="password" value={cPassword} onChange={(e) => setCPassword(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <input type="password" value={cPassword} onChange={(e) => setCPassword(e.target.value)} placeholder="Mínimo 8 caracteres"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>ROL</label>
-                  <select
-                    value={cRol} onChange={(e) => setCRol(e.target.value as RolUsuario)}
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  >
+                  <select value={cRol} onChange={(e) => setCRol(e.target.value as RolUsuario)}
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}>
                     <option value="operador">Operador</option>
-                    <option value="admin">Admin</option>
+                    <option value="admin">Admin del cliente</option>
                     <option value="viewer">Viewer (solo lectura)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CLIENTE (TENANT)</label>
+                  <select value={cTenantId} onChange={(e) => setCTenantId(e.target.value)}
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}>
+                    <option value="">Sin cliente (super-admin)</option>
+                    {tenants.filter((t) => t.activo).map((t) => (
+                      <option key={t.id} value={t.id}>{t.nombre}</option>
+                    ))}
                   </select>
                 </div>
                 {crearError && (
@@ -305,48 +369,43 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Cambiar mi contraseña */}
-      {pwdOpen && (
-        <div className="modal-overlay" onClick={() => setPwdOpen(false)}>
+      {/* Modal: Nuevo cliente */}
+      {tOpen && (
+        <div className="modal-overlay" onClick={() => setTOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <div className="modal-header">
-              <h2>Cambiar mi contraseña</h2>
-              <button className="modal-close" onClick={() => setPwdOpen(false)}>
+              <h2>Nuevo cliente</h2>
+              <button className="modal-close" onClick={() => setTOpen(false)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <form onSubmit={handleMiPwd}>
+            <form onSubmit={handleCrearTenant}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVA CONTRASEÑA</label>
-                  <input
-                    type="password" value={pwdNueva} onChange={(e) => setPwdNueva(e.target.value)}
-                    placeholder="Mínimo 8 caracteres" autoFocus
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NOMBRE DEL CLIENTE</label>
+                  <input type="text" value={tNombre} onChange={(e) => setTNombre(e.target.value)} placeholder="Ej: Distribuidora López" autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
-                  <input
-                    type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)}
-                    placeholder="Repetir contraseña"
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CORREO DE CONTACTO</label>
+                  <input type="email" value={tCorreo} onChange={(e) => setTCorreo(e.target.value)} placeholder="admin@cliente.com"
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
-                {pwdError && (
-                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{pwdError}</div>
+                {tError && (
+                  <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{tError}</div>
                 )}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn-ghost" onClick={() => setPwdOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Guardar</button>
+                <button type="button" className="btn-ghost" onClick={() => setTOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Crear cliente</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Cambiar contraseña de un usuario */}
+      {/* Modal: Cambiar contraseña de usuario */}
       {usrOpen && usrTarget && (
         <div className="modal-overlay" onClick={() => setUsrOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
@@ -360,19 +419,13 @@ export default function AdminPage() {
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>NUEVA CONTRASEÑA</label>
-                  <input
-                    type="password" value={usrPass} onChange={(e) => setUsrPass(e.target.value)}
-                    placeholder="Mínimo 8 caracteres" autoFocus
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <input type="password" value={usrPass} onChange={(e) => setUsrPass(e.target.value)} placeholder="Mínimo 8 caracteres" autoFocus
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>CONFIRMAR</label>
-                  <input
-                    type="password" value={usrConfirm} onChange={(e) => setUsrConfirm(e.target.value)}
-                    placeholder="Repetir contraseña"
-                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }}
-                  />
+                  <input type="password" value={usrConfirm} onChange={(e) => setUsrConfirm(e.target.value)} placeholder="Repetir contraseña"
+                    style={{ padding: '12px 14px', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', background: 'var(--surface)', fontSize: '1rem', color: 'var(--text)', outline: 'none' }} />
                 </div>
                 {usrError && (
                   <div style={{ padding: '10px 14px', borderRadius: 'var(--r-lg)', background: 'color-mix(in srgb, var(--warn) 15%, transparent)', color: 'var(--warn)', fontSize: '.85rem', textAlign: 'center' }}>{usrError}</div>

@@ -20,6 +20,7 @@ export interface UsuarioKv {
   sessionToken?: string;
   lastLoginAt?: number;
   sessionExpiresAt?: number;
+  tenantId?: string;
 }
 
 const PWD_MIN = 8;
@@ -58,11 +59,13 @@ export const usersKv = {
     nombre,
     password,
     rol,
+    tenantId,
   }: {
     correo: string;
     nombre: string;
     password: string;
     rol: UsuarioKv['rol'];
+    tenantId?: string;
   }): Promise<UsuarioKv> {
     if (password.length < PWD_MIN) {
       throw new Error(`La contraseña debe tener al menos ${PWD_MIN} caracteres`);
@@ -79,6 +82,7 @@ export const usersKv = {
       rol,
       activo: true,
       createdAt: Date.now(),
+      tenantId,
     };
     await r.set(key(correo), usuario);
     await r.sadd(INDEX_KEY, correo.toLowerCase());

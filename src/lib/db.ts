@@ -1,5 +1,6 @@
 // src/lib/db.ts
-// Dexie / IndexedDB — schema v4, 3 migraciones, seed opcional.
+// Dexie / IndexedDB — schema v4, 3 migraciones.
+// Multi-tenant: cada tenant tiene su propia DB IndexedDB (inventario_app_{tenantId}).
 // Offline-first. Solo cliente ('use client' en los consumidores).
 
 import Dexie, { type Table } from 'dexie';
@@ -14,6 +15,22 @@ import type {
   Escaneo,
 } from '@/types';
 
+const instances = new Map<string, StockMasterDB>();
+let currentTenantId = 'default';
+
+export function setCurrentTenant(tenantId: string) {
+  if (tenantId !== currentTenantId) {
+    currentTenantId = tenantId;
+  }
+}
+
+function resolveDb(): StockMasterDB {
+  if (!instances.has(currentTenantId)) {
+    instances.set(currentTenantId, new StockMasterDB(currentTenantId));
+  }
+  return instances.get(currentTenantId)!;
+}
+
 export class StockMasterDB extends Dexie {
   productos!: Table<Producto, string>;
   ubicaciones!: Table<Ubicacion, string>;
@@ -24,8 +41,8 @@ export class StockMasterDB extends Dexie {
   alertas!: Table<Alerta, string>;
   escaneos!: Table<Escaneo, string>;
 
-  constructor() {
-    super('inventario_app');
+  constructor(tenantId: string) {
+    super(`inventario_app_${tenantId}`);
 
     /* ---------- v1: schema inicial ---------- */
     this.version(1).stores({
@@ -90,4 +107,8 @@ export class StockMasterDB extends Dexie {
   }
 }
 
-export const db = new StockMasterDB();
+export const db = new Proxy({} as StockMasterDB, {
+  get(_, prop: string | symbol) {
+    return resolveDb()[prop as keyof StockMasterDB];
+  },
+});

@@ -16,6 +16,12 @@ export const crearUsuarioSchema = z.object({
   nombre: nombreSchema,
   password: passwordSchema,
   rol: z.enum(['admin', 'operador', 'viewer']),
+  tenantId: z.string().optional(),
+});
+
+export const crearTenantSchema = z.object({
+  nombre: z.string().trim().min(2, 'Nombre muy corto').max(120),
+  correoContacto: correoSchema,
 });
 
 export const cambiarPasswordSchema = z.object({

@@ -5,6 +5,8 @@ import { leerCookieSesion } from '@/lib/server/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const SUPER_ADMIN = process.env.SUPER_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'atenciafab@gmail.com';
+
 export async function POST(req: Request) {
   try {
     const cookie = req.headers.get('cookie');
@@ -25,6 +27,8 @@ export async function POST(req: Request) {
         createdAt: usuario.createdAt,
         lastLoginAt: usuario.lastLoginAt,
         sessionExpiresAt: usuario.sessionExpiresAt,
+        superAdmin: usuario.correo === SUPER_ADMIN,
+        tenantId: usuario.tenantId,
       },
     });
   } catch (e: any) {
