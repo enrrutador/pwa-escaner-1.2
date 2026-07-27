@@ -4,8 +4,13 @@ export interface TenantKv {
   id: string;
   nombre: string;
   correoContacto: string;
+  telefono?: string;
+  cuit?: string;
+  plan: 'gratuito' | 'basico' | 'pro' | 'empresarial';
   activo: boolean;
   createdAt: number;
+  vencimiento?: number; // timestamp de vencimiento de suscripción
+  notas?: string;
 }
 
 function kv(): Redis {
@@ -32,19 +37,41 @@ export const tenantsKv = {
     return r.get<TenantKv>(key(id));
   },
 
-  async crear(data: { nombre: string; correoContacto: string }): Promise<TenantKv> {
+  async crear(data: {
+    nombre: string;
+    correoContacto: string;
+    telefono?: string;
+    cuit?: string;
+    plan?: TenantKv['plan'];
+    vencimiento?: number;
+    notas?: string;
+  }): Promise<TenantKv> {
     const r = kv();
     const id = 'tnt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     const tenant: TenantKv = {
       id,
       nombre: data.nombre,
       correoContacto: data.correoContacto.toLowerCase(),
+      telefono: data.telefono,
+      cuit: data.cuit,
+      plan: data.plan || 'gratuito',
       activo: true,
       createdAt: Date.now(),
+      vencimiento: data.vencimiento,
+      notas: data.notas,
     };
     await r.set(key(id), tenant);
     await r.sadd(INDEX_KEY, id);
     return tenant;
+  },
+
+  async actualizar(id: string, campos: Partial<Omit<TenantKv, 'id' | 'createdAt'>>): Promise<TenantKv> {
+    const r = kv();
+    const t = await r.get<TenantKv>(key(id));
+    if (!t) throw new Error('Tenant no encontrado');
+    Object.assign(t, campos);
+    await r.set(key(id), t);
+    return t;
   },
 
   async desactivar(id: string): Promise<void> {
@@ -54,4 +81,11 @@ export const tenantsKv = {
     t.activo = false;
     await r.set(key(id), t);
   },
+
+  async eliminar(id: string): Promise<void> {
+    const r = kv();
+    await r.del(key(id));
+    await r.srem(INDEX_KEY, id);
+  },
 };
+

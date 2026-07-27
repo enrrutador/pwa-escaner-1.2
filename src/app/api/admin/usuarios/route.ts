@@ -37,6 +37,8 @@ export async function GET(req: Request) {
       lastLoginAt: u.lastLoginAt,
       sessionExpiresAt: u.sessionExpiresAt,
       tenantId: u.tenantId,
+      telefono: u.telefono,
+      notas: u.notas,
     }));
     return NextResponse.json({ ok: true, usuarios: safe });
   } catch (e: any) {
@@ -62,8 +64,8 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { correo, nombre, password, rol, tenantId } = parsed.data;
-    const nuevo = await usersKv.crear({ correo, nombre, password, rol, tenantId });
+    const { correo, nombre, password, rol, tenantId, telefono, notas } = parsed.data;
+    const nuevo = await usersKv.crear({ correo, nombre, password, rol, tenantId, telefono, notas });
     return NextResponse.json({
       ok: true,
       usuario: { id: nuevo.id, correo: nuevo.correo, nombre: nuevo.nombre, rol: nuevo.rol, tenantId: nuevo.tenantId, createdAt: nuevo.createdAt },

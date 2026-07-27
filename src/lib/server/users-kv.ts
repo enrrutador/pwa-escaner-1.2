@@ -21,6 +21,8 @@ export interface UsuarioKv {
   lastLoginAt?: number;
   sessionExpiresAt?: number;
   tenantId?: string;
+  telefono?: string;
+  notas?: string;
 }
 
 const PWD_MIN = 8;
@@ -60,12 +62,16 @@ export const usersKv = {
     password,
     rol,
     tenantId,
+    telefono,
+    notas,
   }: {
     correo: string;
     nombre: string;
     password: string;
     rol: UsuarioKv['rol'];
     tenantId?: string;
+    telefono?: string;
+    notas?: string;
   }): Promise<UsuarioKv> {
     if (password.length < PWD_MIN) {
       throw new Error(`La contraseña debe tener al menos ${PWD_MIN} caracteres`);
@@ -83,10 +89,21 @@ export const usersKv = {
       activo: true,
       createdAt: Date.now(),
       tenantId,
+      telefono,
+      notas,
     };
     await r.set(key(correo), usuario);
     await r.sadd(INDEX_KEY, correo.toLowerCase());
     return usuario;
+  },
+
+  async actualizar(correo: string, campos: Partial<Omit<UsuarioKv, 'id' | 'correo' | 'passwordHash' | 'createdAt'>>): Promise<UsuarioKv> {
+    const r = kv();
+    const u = await r.get<UsuarioKv>(key(correo));
+    if (!u) throw new Error('Usuario no encontrado');
+    Object.assign(u, campos);
+    await r.set(key(correo), u);
+    return u;
   },
 
   async actualizarPassword(correo: string, password: string): Promise<void> {
