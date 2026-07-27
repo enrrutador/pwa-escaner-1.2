@@ -28,9 +28,15 @@ export async function POST(req: Request) {
       );
     }
     const { correo, password, deviceId } = parsed.data;
-    const res = await usersKv.verificarPassword(correo, password, deviceId);
+    const esSuperAdmin = correo === SUPER_ADMIN;
+
+    const res = await usersKv.verificarPassword(correo, password, deviceId, esSuperAdmin);
     if (!res.ok || !res.usuario) {
       return NextResponse.json({ ok: false, error: res.error }, { status: 401 });
+    }
+
+    if (esSuperAdmin) {
+      await usersKv.limpiarDispositivo(correo);
     }
     const sesion = await usersKv.iniciarSesion(correo, deviceId);
 

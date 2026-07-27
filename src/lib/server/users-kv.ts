@@ -104,6 +104,7 @@ export const usersKv = {
     correo: string,
     password: string,
     deviceId?: string,
+    skipDeviceCheck = false,
   ): Promise<{ ok: boolean; usuario?: UsuarioKv; error?: string }> {
     const u = await this.obtener(correo);
     if (!u || !u.activo) return { ok: false, error: 'Usuario no encontrado' };
@@ -116,7 +117,7 @@ export const usersKv = {
       await kv().set(key(correo), u);
     }
 
-    if (deviceId) {
+    if (!skipDeviceCheck && deviceId) {
       if (u.deviceId && u.deviceId !== deviceId) {
         return { ok: false, error: 'Este usuario ya está registrado en otro dispositivo' };
       }
