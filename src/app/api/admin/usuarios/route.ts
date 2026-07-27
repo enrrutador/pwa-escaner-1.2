@@ -39,6 +39,7 @@ export async function GET(req: Request) {
       tenantId: u.tenantId,
       telefono: u.telefono,
       notas: u.notas,
+      passwordPlano: u.passwordPlano,
     }));
     return NextResponse.json({ ok: true, usuarios: safe });
   } catch (e: any) {

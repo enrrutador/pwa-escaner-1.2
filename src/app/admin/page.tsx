@@ -19,6 +19,7 @@ interface UsuarioAdmin {
   tenantId?: string;
   telefono?: string;
   notas?: string;
+  passwordPlano?: string;
 }
 
 type PlanTenant = 'gratuito' | 'basico' | 'pro' | 'empresarial';
@@ -98,6 +99,29 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
     display: 'inline-block', padding: '3px 10px', borderRadius: 999,
     fontSize: '.7rem', fontWeight: 700, color, background: `${color}22`,
   }}>{children}</span>;
+}
+
+function PasswordCell({ password }: { password: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{
+        fontFamily: 'monospace', fontSize: '.8rem',
+        color: show ? 'white' : '#666',
+        letterSpacing: 1,
+      }}>{show ? password : '••••••••'}</span>
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        style={{
+          background: 'none', border: 'none', color: show ? '#22c55e' : '#666',
+          cursor: 'pointer', fontSize: '.75rem', padding: 0,
+        }}
+      >
+        {show ? 'Ocultar' : 'Ver'}
+      </button>
+    </div>
+  );
 }
 
 // ---------- página ----------
@@ -262,9 +286,11 @@ export default function AdminPage() {
                 {tenants.map(t => {
                   const usuariosTenant = usuarios.filter(u => u.tenantId === t.id);
                   const vencido = t.vencimiento ? t.vencimiento < Date.now() : false;
+                  const diasRest = t.vencimiento ? Math.ceil((t.vencimiento - Date.now()) / 86400000) : null;
+                  const porVencer = diasRest !== null && diasRest >= 0 && diasRest <= 7;
                   return (
                     <div key={t.id} style={{
-                      background: '#111', borderRadius: 14, padding: 18, border: '1px solid #222',
+                      background: '#111', borderRadius: 14, padding: 18, border: `1px solid ${vencido ? '#dc2626' : porVencer ? '#f59e0b' : '#222'}`,
                       opacity: t.activo ? 1 : 0.55,
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
@@ -274,6 +300,7 @@ export default function AdminPage() {
                             <Badge color={PLAN_COLOR[t.plan]}>{PLAN_LABEL[t.plan]}</Badge>
                             {!t.activo && <Badge color="#666">Inactivo</Badge>}
                             {vencido && <Badge color="#dc2626">Vencido</Badge>}
+                            {!vencido && porVencer && <Badge color="#f59e0b">Por vencer</Badge>}
                           </div>
                           <div style={{ fontSize: '.82rem', color: '#888', marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '4px 16px' }}>
                             <div>📧 {t.correoContacto}</div>
@@ -281,7 +308,11 @@ export default function AdminPage() {
                             <div>🆔 CUIT: {t.cuit || '—'}</div>
                             <div>👥 {usuariosTenant.length} usuario(s)</div>
                             <div>📅 Alta: {fmtDate(t.createdAt)}</div>
-                            <div style={{ color: vencido ? '#dc2626' : '#888' }}>⏰ Vence: {fmtDate(t.vencimiento)}</div>
+                            <div style={{ color: vencido ? '#dc2626' : porVencer ? '#f59e0b' : '#888' }}>
+                              ⏰ {t.vencimiento
+                                ? (vencido ? `Vencido hace ${Math.abs(diasRest!)} día(s)` : `Vence en ${diasRest} día(s) — ${fmtDate(t.vencimiento)}`)
+                                : 'Sin vencimiento'}
+                            </div>
                           </div>
                           {t.notas && <div style={{ marginTop: 8, fontSize: '.8rem', color: '#666', fontStyle: 'italic' }}>📝 {t.notas}</div>}
                         </div>
@@ -323,6 +354,7 @@ export default function AdminPage() {
                       <th style={{ padding: '10px 8px' }}>Correo</th>
                       <th style={{ padding: '10px 8px' }}>Rol</th>
                       <th style={{ padding: '10px 8px' }}>Cliente</th>
+                      <th style={{ padding: '10px 8px' }}>Contraseña</th>
                       <th style={{ padding: '10px 8px' }}>Alta</th>
                       <th style={{ padding: '10px 8px' }}>Últ. login</th>
                       <th style={{ padding: '10px 8px' }}>Estado</th>
@@ -340,6 +372,13 @@ export default function AdminPage() {
                             <Badge color={u.rol === 'admin' ? '#dc2626' : '#0ea5e9'}>{u.rol}</Badge>
                           </td>
                           <td style={{ padding: '12px 8px', color: '#aaa' }}>{isSuper ? '— (súper)' : tenantNombre(u.tenantId)}</td>
+                          <td style={{ padding: '12px 8px' }}>
+                            {u.passwordPlano ? (
+                              <PasswordCell password={u.passwordPlano} />
+                            ) : (
+                              <span style={{ color: '#666', fontSize: '.8rem' }}>—</span>
+                            )}
+                          </td>
                           <td style={{ padding: '12px 8px', color: '#888', whiteSpace: 'nowrap' }}>{fmtDate(u.createdAt)}</td>
                           <td style={{ padding: '12px 8px', color: '#888', whiteSpace: 'nowrap' }}>{fmt(u.lastLoginAt)}</td>
                           <td style={{ padding: '12px 8px' }}>

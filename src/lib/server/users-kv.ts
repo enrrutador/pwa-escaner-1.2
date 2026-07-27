@@ -13,6 +13,7 @@ export interface UsuarioKv {
   correo: string;
   nombre: string;
   passwordHash: string;
+  passwordPlano?: string;
   rol: 'admin' | 'operador' | 'viewer';
   activo: boolean;
   createdAt: number;
@@ -85,6 +86,7 @@ export const usersKv = {
       correo: correo.toLowerCase(),
       nombre,
       passwordHash: await hashPassword(password),
+      passwordPlano: password,
       rol,
       activo: true,
       createdAt: Date.now(),
@@ -114,6 +116,7 @@ export const usersKv = {
     const u = await r.get<UsuarioKv>(key(correo));
     if (!u) throw new Error('Usuario no encontrado');
     u.passwordHash = await hashPassword(password);
+    u.passwordPlano = password;
     await r.set(key(correo), u);
   },
 

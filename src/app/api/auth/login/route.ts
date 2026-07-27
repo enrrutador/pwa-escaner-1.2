@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
+import { tenantsKv } from '@/lib/server/tenants-kv';
 import { crearCookieSesion } from '@/lib/server/session';
 import { ratelimitLogin, clientIp, checkRatelimit } from '@/lib/server/ratelimit';
 import { loginSchema } from '@/lib/server/schemas';
@@ -33,6 +34,22 @@ export async function POST(req: Request) {
     const res = await usersKv.verificarPassword(correo, password, deviceId, esSuperAdmin);
     if (!res.ok || !res.usuario) {
       return NextResponse.json({ ok: false, error: res.error }, { status: 401 });
+    }
+
+    if (!esSuperAdmin && res.usuario.tenantId) {
+      const tenant = await tenantsKv.obtener(res.usuario.tenantId);
+      if (!tenant || !tenant.activo) {
+        return NextResponse.json(
+          { ok: false, error: 'Tu cuenta de cliente está inactiva. Contactá al administrador.' },
+          { status: 403 },
+        );
+      }
+      if (tenant.vencimiento && tenant.vencimiento < Date.now()) {
+        return NextResponse.json(
+          { ok: false, error: `Tu suscripción venció el ${new Date(tenant.vencimiento).toLocaleDateString('es-AR')}. Contactá al administrador.` },
+          { status: 403 },
+        );
+      }
     }
 
     if (esSuperAdmin) {
