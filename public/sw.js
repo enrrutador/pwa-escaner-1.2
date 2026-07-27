@@ -5,7 +5,6 @@ const IMAGE_CACHE = 'stockmaster-images-v4';
 const OFFLINE_FALLBACK = '/offline.html';
 
 const STATIC_ASSETS = [
-  '/',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg',

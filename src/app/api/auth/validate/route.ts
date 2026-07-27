@@ -1,4 +1,3 @@
-// /api/auth/validate — lee cookie httpOnly, valida sesion contra Redis.
 import { NextResponse } from 'next/server';
 import { usersKv } from '@/lib/server/users-kv';
 import { leerCookieSesion } from '@/lib/server/session';

@@ -53,10 +53,6 @@ export const useAuthStore = create<AuthState>()(
       _hasHydrated: false,
 
       async inicializar() {
-        try {
-          await fetch('/api/auth/seed', { method: 'POST' });
-        } catch {}
-
         const actual = get().usuario;
         if (actual?.correo) {
           try {

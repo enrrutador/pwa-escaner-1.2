@@ -5,7 +5,8 @@
 //   index:users   -> set de correos para listado rápido
 
 import { Redis } from '@upstash/redis';
-import { hashPassword, uid } from '@/lib/utils';
+import { hashPassword, verificarPassword, necesitaRehash } from '@/lib/server/password';
+import { uid } from '@/lib/utils';
 
 export interface UsuarioKv {
   id: string;
@@ -103,8 +104,13 @@ export const usersKv = {
     const u = await this.obtener(correo);
     if (!u || !u.activo) return { ok: false, error: 'Usuario no encontrado' };
 
-    const hash = await hashPassword(password);
-    if (hash !== u.passwordHash) return { ok: false, error: 'Contraseña incorrecta' };
+    const ok = await verificarPassword(password, u.passwordHash);
+    if (!ok) return { ok: false, error: 'Contraseña incorrecta' };
+
+    if (necesitaRehash(u.passwordHash)) {
+      u.passwordHash = await hashPassword(password);
+      await kv().set(key(correo), u);
+    }
 
     if (deviceId) {
       if (u.deviceId && u.deviceId !== deviceId) {

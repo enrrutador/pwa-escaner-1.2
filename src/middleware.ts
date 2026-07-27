@@ -10,7 +10,7 @@ export const config = {
 
 // Rutas publicas (no requieren sesion)
 const PUBLICAS = ['/login'];
-const API_PUBLICAS = ['/api/auth/login', '/api/auth/logout', '/api/auth/seed'];
+const API_PUBLICAS = ['/api/auth/login', '/api/auth/logout'];
 
 const ALLOWED_ORIGINS = [
   'https://stockmaster-eta.vercel.app',

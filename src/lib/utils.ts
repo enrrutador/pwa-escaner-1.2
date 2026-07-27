@@ -2,7 +2,6 @@
 // Utilidades base: uid, now, hashPin (Web Crypto SHA-256 con salt).
 
 const PIN_SALT = 'stockmaster::v1::salt';
-const PASSWORD_SALT = 'stockmaster::v1::pwd-salt';
 
 /** UUID con fallback a timestamp + random para entornos sin crypto.randomUUID. */
 export function uid(): string {
@@ -38,33 +37,6 @@ export async function hashPin(pin: string): Promise<string> {
     h = (Math.imul(31, h) + data.charCodeAt(i)) | 0;
   }
   return `fallback_${(h >>> 0).toString(16)}`;
-}
-
-/**
- * Hash de contraseña admin con SHA-256(salt + password).
- * Salt distinto al del PIN.
- */
-export async function hashPassword(password: string): Promise<string> {
-  const data = `${PASSWORD_SALT}:${password}`;
-
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const buf = new TextEncoder().encode(data);
-    const digest = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(digest))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  let h = 0;
-  for (let i = 0; i < data.length; i++) {
-    h = (Math.imul(31, h) + data.charCodeAt(i)) | 0;
-  }
-  return `fallback_${(h >>> 0).toString(16)}`;
-}
-
-export async function verificarPasswordHash(password: string, hash: string): Promise<boolean> {
-  const h = await hashPassword(password);
-  return h === hash;
 }
 
 /** Normaliza texto para deduplicación (trim, lower, primeros 30 chars). */
