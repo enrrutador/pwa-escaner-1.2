@@ -11,7 +11,7 @@ export type TipoUbicacion =
   | 'estante'
   | 'posicion';
 export type TipoConteo = 'completo' | 'parcial' | 'ciclico';
-export type RolUsuario = 'admin' | 'operador' | 'viewer';
+export type RolUsuario = 'admin' | 'cliente';
 
 export type TipoAlerta = 'stock_bajo' | 'sin_stock';
 export type EstadoConteo = 'abierto' | 'en_progreso' | 'finalizado' | 'cancelado';
@@ -182,7 +182,7 @@ export type Permiso = (typeof PERMISOS_DISPONIBLES)[number];
 
 export const PERMISOS_POR_ROL: Record<RolUsuario, Permiso[]> = {
   admin: [...PERMISOS_DISPONIBLES],
-  operador: [
+  cliente: [
     'productos:ver',
     'productos:crear',
     'productos:editar',
@@ -190,7 +190,6 @@ export const PERMISOS_POR_ROL: Record<RolUsuario, Permiso[]> = {
     'conteos:gestionar',
     'alertas:ver',
   ],
-  viewer: ['productos:ver', 'alertas:ver'],
 };
 
 /* ============ CONSTANTES UI ============ */

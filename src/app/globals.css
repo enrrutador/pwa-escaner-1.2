@@ -582,3 +582,7 @@ select {
   50% { transform: scale(1.3); opacity: 0.2; }
   100% { transform: scale(1.6); opacity: 0; }
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

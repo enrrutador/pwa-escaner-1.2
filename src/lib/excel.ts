@@ -54,8 +54,7 @@ export interface ImportConflict {
   resolution: 'skip' | 'update' | 'create_new';
 }
 
-function workbookToProductos(wb: any, existingProducts: Producto[] = []): ImportResult {
-  const utils = (wb as any).utils;
+function workbookToProductos(utils: any, wb: any, existingProducts: Producto[] = []): ImportResult {
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return { productos: [], errors: [{ row: 0, message: 'Hoja vacía' }], conflicts: [] };
 
@@ -166,7 +165,7 @@ export async function importProductosFromFile(file: File, existingProducts: Prod
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb = xlsx.read(data, { type: 'array' });
-        resolve(workbookToProductos(wb, existingProducts));
+        resolve(workbookToProductos(xlsx.utils, wb, existingProducts));
       } catch (err) {
         reject(err);
       }

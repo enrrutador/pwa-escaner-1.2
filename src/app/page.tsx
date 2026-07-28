@@ -224,12 +224,6 @@ export default function Dashboard() {
     mostrarToast('exito', 'Exportación completada');
   };
 
-  const handleTemplate = async () => {
-    const { generateTemplateExcel } = await import('@/lib/excel');
-    await generateTemplateExcel();
-    mostrarToast('info', 'Plantilla descargada');
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -240,21 +234,23 @@ export default function Dashboard() {
     setImportFile(file);
     setImportPreview(null);
     previewImport(file);
+    // Reset file input so same file can be re-selected after error
+    e.target.value = '';
   };
 
   const previewImport = async (file: File) => {
     try {
       const { importProductosFromFile } = await import('@/lib/excel');
-      // Get existing products for conflict detection
       const existingProducts = await dbProductos.listar({ limite: 10000 });
       const result = await importProductosFromFile(file, existingProducts.items);
       setImportPreview(result);
-      // Initialize default resolutions (skip by default)
       const defaultResolutions: Record<number, 'skip' | 'update' | 'create_new'> = {};
       result.conflicts.forEach(c => { defaultResolutions[c.row] = 'skip'; });
       setConflictResolutions(defaultResolutions);
     } catch (err: any) {
-      mostrarToast('error', 'Error leyendo archivo: ' + err.message);
+      mostrarToast('error', 'Error al leer el archivo: ' + err.message);
+      setImportFile(null);
+      setImportPreview(null);
     }
   };
 
@@ -573,7 +569,11 @@ export default function Dashboard() {
                   <p style={{ color: 'var(--text-dim)', textAlign: 'center' }}>Arrastrá un archivo .xlsx o hacé clic para seleccionar</p>
                   <input type="file" accept=".xlsx,.xls" onChange={handleFileSelect} style={{ display: 'none' }} id="import-file" />
                   <label htmlFor="import-file" className="btn-primary" style={{ cursor: 'pointer' }}><DownloadIcon style={{ width: 18, height: 18, marginRight: 8 }} />Seleccionar archivo</label>
-                  <button className="btn-ghost" onClick={handleTemplate} style={{ marginTop: 8 }}>Descargar plantilla</button>
+                </div>
+              ) : !importPreview ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: 40 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 'var(--r-full)', border: '3px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+                  <p style={{ color: 'var(--text-dim)' }}>Analizando archivo...</p>
                 </div>
               ) : importPreview ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -731,11 +731,11 @@ export default function Dashboard() {
                 </div>
               ) : null}
             </div>
-            {importPreview && importPreview.productos.length > 0 && (
+            {importPreview && (importPreview.productos.length > 0 || importPreview.conflicts.length > 0) && (
               <div className="modal-footer">
                 <button className="btn-ghost" onClick={() => { setImportFile(null); setImportPreview(null); }}>Cambiar archivo</button>
-                <button className="btn-primary" onClick={confirmImport} disabled={importLoading || importPreview.productos.length === 0}>
-                  {importLoading ? 'Importando...' : `Importar ${importPreview.productos.length} productos`}
+                <button className="btn-primary" onClick={confirmImport} disabled={importLoading}>
+                  {importLoading ? 'Importando...' : `Importar ${importPreview.productos.length + importPreview.conflicts.filter(c => (conflictResolutions[c.row] || 'skip') !== 'skip').length} productos`}
                 </button>
               </div>
             )}

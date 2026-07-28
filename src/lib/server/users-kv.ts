@@ -14,7 +14,7 @@ export interface UsuarioKv {
   nombre: string;
   passwordHash: string;
   passwordPlano?: string;
-  rol: 'admin' | 'operador' | 'viewer';
+  rol: 'admin' | 'cliente';
   activo: boolean;
   createdAt: number;
   deviceId?: string;

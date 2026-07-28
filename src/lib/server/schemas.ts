@@ -15,7 +15,7 @@ export const crearUsuarioSchema = z.object({
   correo: correoSchema,
   nombre: nombreSchema,
   password: passwordSchema,
-  rol: z.enum(['admin', 'operador', 'viewer']),
+  rol: z.enum(['admin', 'cliente']),
   tenantId: z.string().optional(),
   telefono: z.string().max(40).optional(),
   notas: z.string().max(500).optional(),
@@ -48,7 +48,7 @@ export const editarTenantSchema = z.object({
 
 export const editarUsuarioSchema = z.object({
   nombre: nombreSchema.optional(),
-  rol: z.enum(['admin', 'operador', 'viewer']).optional(),
+  rol: z.enum(['admin', 'cliente']).optional(),
   tenantId: z.string().optional().nullable(),
   activo: z.boolean().optional(),
   telefono: z.string().max(40).optional(),

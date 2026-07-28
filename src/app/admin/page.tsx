@@ -369,7 +369,7 @@ export default function AdminPage() {
                           <td style={{ padding: '12px 8px', fontWeight: 600 }}>{u.nombre}{isSuper && ' 👑'}</td>
                           <td style={{ padding: '12px 8px', color: '#aaa', wordBreak: 'break-all' }}>{u.correo}</td>
                           <td style={{ padding: '12px 8px' }}>
-                            <Badge color={u.rol === 'admin' ? '#dc2626' : '#0ea5e9'}>{u.rol}</Badge>
+                            <Badge color={u.rol === 'admin' ? '#dc2626' : '#0ea5e9'}>{u.rol === 'admin' ? 'Admin' : 'Cliente'}</Badge>
                           </td>
                           <td style={{ padding: '12px 8px', color: '#aaa' }}>{isSuper ? '— (súper)' : tenantNombre(u.tenantId)}</td>
                           <td style={{ padding: '12px 8px' }}>
@@ -556,7 +556,7 @@ function NewUserModal({ tenants, onClose, onSubmit }: { tenants: TenantItem[]; o
   const [correo, setCorreo] = useState('');
   const [nombre, setNombre] = useState('');
   const [password, setPassword] = useState('');
-  const [rol, setRol] = useState<RolUsuario>('operador');
+  const [rol, setRol] = useState<RolUsuario>('cliente');
   const [tenantId, setTenantId] = useState('');
   const [telefono, setTelefono] = useState('');
   const [notas, setNotas] = useState('');
@@ -617,9 +617,8 @@ function EditUserModal({ user, tenants, onClose, onSubmit }: { user: UsuarioAdmi
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 1 }}><label style={labelStyle}>ROL</label>
           <select style={inputStyle} value={rol} onChange={e => setRol(e.target.value as RolUsuario)}>
-            <option value="operador">Operador</option>
-            <option value="admin">Admin (del cliente)</option>
-            <option value="viewer">Viewer (lectura)</option>
+            <option value="cliente">Cliente</option>
+            <option value="admin">Administrador</option>
           </select>
         </div>
         <div style={{ flex: 1 }}><label style={labelStyle}>CLIENTE</label>
@@ -641,18 +640,33 @@ function ResetPasswordModal({ user, onClose, onSubmit }: { user: UsuarioAdmin; o
   const [nueva, setNueva] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
 
   return (
-    <Modal title={`Reiniciar contraseña de ${user.nombre}`} onClose={onClose} submitLabel="Reiniciar" onSubmit={(e) => {
+    <Modal title={`Contraseña de ${user.nombre}`} onClose={onClose} submitLabel="Reiniciar" onSubmit={(e) => {
       e.preventDefault();
       if (nueva.length < 8) { setError('Mínimo 8 caracteres'); return; }
       if (nueva !== confirm) { setError('Las contraseñas no coinciden'); return; }
       setError('');
       onSubmit(nueva);
     }}>
-      <div><label style={labelStyle}>NUEVA CONTRASEÑA</label><input style={inputStyle} type="password" value={nueva} onChange={e => setNueva(e.target.value)} autoFocus /></div>
-      <div><label style={labelStyle}>CONFIRMAR</label><input style={inputStyle} type="password" value={confirm} onChange={e => setConfirm(e.target.value)} /></div>
-      <p style={{ color: '#888', fontSize: '.8rem' }}>⚠️ La sesión actual de {user.nombre} se cerrará y deberá ingresar con la nueva contraseña.</p>
+      <div style={{ marginBottom: 16, padding: 12, background: '#1a1a2e', borderRadius: 8, border: '1px solid #333' }}>
+        <label style={labelStyle}>CONTRASEÑA ACTUAL</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <code style={{ flex: 1, fontSize: '.9rem', color: '#e2e8f0', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+            {showPwd ? user.passwordPlano || '—' : '••••••••'}
+          </code>
+          <button onClick={() => setShowPwd(!showPwd)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '.9rem' }} title={showPwd ? 'Ocultar' : 'Mostrar'}>
+            {showPwd ? '🙈' : '👁️'}
+          </button>
+        </div>
+      </div>
+      <div style={{ borderTop: '1px solid #222', paddingTop: 16 }}>
+        <p style={{ color: '#aaa', fontSize: '.85rem', marginBottom: 12 }}>Reiniciar contraseña:</p>
+        <div><label style={labelStyle}>NUEVA CONTRASEÑA</label><input style={inputStyle} type="text" value={nueva} onChange={e => setNueva(e.target.value)} autoFocus placeholder="Mínimo 8 caracteres" /></div>
+        <div style={{ marginTop: 8 }}><label style={labelStyle}>CONFIRMAR</label><input style={inputStyle} type="text" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repetí la nueva contraseña" /></div>
+        <p style={{ color: '#888', fontSize: '.8rem', marginTop: 12 }}>⚠️ La sesión actual se cerrará y deberá ingresar con la nueva contraseña.</p>
+      </div>
       {error && <p style={{ color: '#ef4444', fontSize: '.85rem', margin: 0 }}>{error}</p>}
     </Modal>
   );
