@@ -586,3 +586,10 @@ select {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+@keyframes pulse-scraper {
+  0%, 100% { color: var(--primary); transform: scale(1); }
+  25% { color: #0ea5e9; transform: scale(1.1); }
+  50% { color: #6366f1; transform: scale(1.05); }
+  75% { color: #16a34a; transform: scale(1.1); }
+}

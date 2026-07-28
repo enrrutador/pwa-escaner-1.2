@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { FloatingScannerFab } from '@/components/common/FloatingScannerFab';
 import { useAuthStore } from '@/store/authStore';
+import { useScraperStore } from '@/store/scraperStore';
 
 const NAV = [
   { href: '/', label: 'PANEL', icon: 'layout-dashboard' },
@@ -15,6 +16,7 @@ const NAV = [
 
 function TopBar({ pathname }: { pathname: string }) {
   const { usuario, esSuperAdmin, logout } = useAuthStore();
+  const scraper = useScraperStore();
   const router = useRouter();
   const titles: Record<string, { icon: string; text: string; mode: 'brand' | 'title' }> = {
     '/': { icon: 'boxes', text: 'StockMaster', mode: 'brand' },
@@ -29,14 +31,34 @@ function TopBar({ pathname }: { pathname: string }) {
   const cfg = titles[pathname] || titles['/'];
   const isProductDetail = pathname.startsWith('/producto/');
 
+  const scraperColor = scraper.estado === 'procesando'
+    ? 'var(--primary)'
+    : scraper.estado === 'finalizado'
+    ? '#16a34a'
+    : 'currentColor';
+  const scraperTitle = scraper.estado === 'procesando'
+    ? `Completando datos... ${scraper.procesados}/${scraper.total} (${scraper.completados} enriquecidos)`
+    : scraper.estado === 'finalizado'
+    ? `Datos completados: ${scraper.completados} productos enriquecidos`
+    : 'StockMaster';
+
   return (
     <header className="topbar">
       {cfg.mode === 'brand' ? (
         <>
-          <button className="icon-btn" aria-label="Menú">
+          <button
+            className="icon-btn"
+            aria-label="Estado del scraper"
+            title={scraperTitle}
+            style={{
+              color: scraperColor,
+              transition: 'color .3s',
+              animation: scraper.estado === 'procesando' ? 'pulse-scraper 1.5s ease-in-out infinite' : 'none',
+            }}
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
           </button>
-          <div className="brand">
+          <div className="brand" style={{ color: scraperColor, transition: 'color .3s' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
             StockMaster
           </div>

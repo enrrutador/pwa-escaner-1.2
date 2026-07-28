@@ -13,6 +13,7 @@ import { dbMovimientos } from '@/lib/db-movimientos';
 import { eventBus } from '@/lib/eventBus';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
+import { useScraperStore } from '@/store/scraperStore';
 
 function StatIcon() {
   return (
@@ -254,6 +255,8 @@ export default function Dashboard() {
     }
   };
 
+  const scraperStore = useScraperStore();
+
   const confirmImport = async () => {
     if (!importPreview || (importPreview.productos.length === 0 && importPreview.conflicts.length === 0)) return;
     setImportLoading(true);
@@ -268,16 +271,14 @@ export default function Dashboard() {
         const resolution = conflictResolutions[conflict.row] || 'skip';
         
         if (resolution === 'skip') {
-          continue; // Skip this row
+          continue;
         } else if (resolution === 'update') {
-          // Update existing product with new data
           const updateData = {
             ...conflict.importData,
-            stockActual: conflict.importData.stockActual + conflict.existing.stockActual, // Sum stock
+            stockActual: conflict.importData.stockActual + conflict.existing.stockActual,
           };
           await dbProductos.actualizar(conflict.existing.id, updateData);
         } else if (resolution === 'create_new') {
-          // Create as new product (force new EAN/PLU)
           await dbProductos.crear(conflict.importData);
         }
       }
@@ -289,6 +290,29 @@ export default function Dashboard() {
       setImportPreview(null);
       setConflictResolutions({});
       router.refresh();
+
+      // === Autocompletado en background ===
+      // No bloquea al usuario; el cubo del TopBar se anima mientras corre.
+      (async () => {
+        try {
+          const { autocompletarPendientes } = await import('@/lib/autocompletar');
+          scraperStore.setProcesando(0);
+          const { total, completados } = await autocompletarPendientes((p) => {
+            if (p.estado === 'procesando') {
+              scraperStore.setProgreso(p.procesados, p.completados);
+            } else if (p.estado === 'finalizado') {
+              scraperStore.setFinalizado(p.total, p.completados);
+              if (p.completados > 0) {
+                mostrarToast('info', `${p.completados} productos enriquecidos con datos del scraper`);
+              }
+              setTimeout(() => scraperStore.reset(), 3000);
+            }
+          });
+          if (total === 0) scraperStore.reset();
+        } catch {
+          scraperStore.reset();
+        }
+      })();
     } catch (err: any) {
       mostrarToast('error', 'Error importando: ' + err.message);
     } finally {
@@ -578,33 +602,19 @@ export default function Dashboard() {
               ) : importPreview ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div className="import-summary">
-                    <div className={`summary-item ${importPreview.errors.length > 0 ? 'warn' : 'ok'}`}>
-                      <span>{importPreview.productos.length} productos válidos</span>
+                    <div className="summary-item ok">
+                      <span>{importPreview.productos.length + importPreview.conflicts.length} filas detectadas</span>
                     </div>
                     {importPreview.conflicts && importPreview.conflicts.length > 0 && (
                       <div className="summary-item warn">
-                        <span>{importPreview.conflicts.length} conflictos (duplicados EAN/PLU)</span>
-                      </div>
-                    )}
-                    {importPreview.errors.length > 0 && (
-                      <div className="summary-item error">
-                        <span>{importPreview.errors.length} errores</span>
+                        <span>{importPreview.conflicts.length} duplicados (EAN/PLU)</span>
                       </div>
                     )}
                   </div>
-                  {importPreview.errors.length > 0 && (
-                    <details className="errors-list">
-                      <summary>Ver errores ({importPreview.errors.length})</summary>
-                      <ul>
-                        {importPreview.errors.map((err, i) => (
-                          <li key={i}>Fila {err.row}: {err.message}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
+
                   {importPreview.conflicts && importPreview.conflicts.length > 0 && (
                     <details className="errors-list" style={{ marginTop: 8 }} open>
-                      <summary style={{ color: 'var(--warn)' }}>Ver conflictos ({importPreview.conflicts.length})</summary>
+                      <summary style={{ color: 'var(--warn)' }}>Resolver duplicados ({importPreview.conflicts.length})</summary>
                       <ul style={{ marginTop: 8 }}>
                         {importPreview.conflicts.map((c, i) => (
                           <li key={i} style={{ 
@@ -683,16 +693,11 @@ export default function Dashboard() {
                       </ul>
                     </details>
                   )}
-                  {importPreview.errors.length > 0 && (
-                    <details className="errors-list">
-                      <summary>Ver errores ({importPreview.errors.length})</summary>
-                      <ul>
-                        {importPreview.errors.map((err, i) => (
-                          <li key={i}>Fila {err.row}: {err.message}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
+
+                  <div style={{ padding: '10px 14px', background: 'var(--surface-low)', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', fontSize: '.82rem', color: 'var(--text-dim)' }}>
+                    ℹ️ Los datos faltantes (nombre, marca, imagen, precio) se completarán automáticamente usando el scraper cuando haya conexión.
+                  </div>
+
                   <div className="import-preview-table">
                     <table>
                       <thead>
