@@ -17,6 +17,7 @@ const VTEX_STORES: Record<string, string> = {
 
 const COTO_AUTOCOMPLETE = 'https://ac.cnstrc.com/autocomplete';
 const COTO_KEY = process.env.CONSTRUCTOR_KEY ?? '';
+const DDG_HTML = 'https://html.duckduckgo.com/html';
 
 async function fetchConTimeout(url: string, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
@@ -129,6 +130,51 @@ async function buscarCoto(q: string): Promise<ResultadoBusqueda[]> {
   }
 }
 
+/** Fallback: DuckDuckGo HTML scrape for generic product search */
+async function buscarDuckDuckGo(q: string): Promise<ResultadoBusqueda[]> {
+  try {
+    const url = `${DDG_HTML}?q=${encodeURIComponent(q + ' producto precio')}&kl=ar-es`;
+    console.log(`[buscar] duckduckgo -> ${url}`);
+    const res = await fetchConTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    console.log(`[buscar] duckduckgo status: ${res.status}`);
+    if (!res.ok) return [];
+    const html = await res.text();
+    
+    // Parse results from DDG HTML (basic regex extraction)
+    const resultados: ResultadoBusqueda[] = [];
+    const resultRegex = /class="result__snippet"[^>]*>([^<]+)</g;
+    const titleRegex = /class="result__title"[^>]*><a[^>]*>([^<]+)</g;
+    const urlRegex = /class="result__url"[^>]*>([^<]+)</g;
+    
+    let match;
+    const snippets: string[] = [];
+    while ((match = resultRegex.exec(html)) !== null) {
+      snippets.push(match[1]);
+    }
+    const titles: string[] = [];
+    while ((match = titleRegex.exec(html)) !== null) {
+      titles.push(match[1]);
+    }
+    
+    for (let i = 0; i < Math.min(titles.length, snippets.length, 3); i++) {
+      const nombre = titles[i].trim();
+      const snippet = snippets[i].trim();
+      if (nombre && nombre.length > 3) {
+        resultados.push({
+          nombre,
+          descripcion: snippet,
+          fuente: 'duckduckgo',
+        });
+      }
+    }
+    console.log(`[buscar] duckduckgo ${resultados.length} items`);
+    return resultados;
+  } catch (e) {
+    console.error('[buscar] duckduckgo error:', e);
+    return [];
+  }
+}
+
 function deduplicar(resultados: ResultadoBusqueda[]): ResultadoBusqueda[] {
   const mapa = new Map<string, ResultadoBusqueda>();
   for (const r of resultados) {
@@ -180,6 +226,13 @@ export async function GET(req: NextRequest) {
     for (const s of fallback) {
       if (s.status === 'fulfilled') todos.push(...s.value);
     }
+  }
+
+  // Final fallback: DuckDuckGo generic web search
+  if (todos.length === 0) {
+    console.log('[buscar] catalog vacío, intentando DuckDuckGo');
+    const ddg = await buscarDuckDuckGo(q);
+    todos.push(...ddg);
   }
 
   console.log(`[buscar] total antes dedup: ${todos.length}`);
