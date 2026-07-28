@@ -695,7 +695,10 @@ export default function Dashboard() {
                   )}
 
                   <div style={{ padding: '10px 14px', background: 'var(--surface-low)', borderRadius: 'var(--r-lg)', border: '1px solid var(--line-soft)', fontSize: '.82rem', color: 'var(--text-dim)' }}>
-                    ℹ️ Los datos faltantes (nombre, marca, imagen, precio) se completarán automáticamente usando el scraper cuando haya conexión.
+                    ℹ️ <strong>Importación aditiva:</strong> todos los productos se suman a tu inventario actual.<br/>
+                    • Duplicados (mismo EAN/PLU): vos elegís saltar, actualizar sumando stock o crear nuevo.<br/>
+                    • Productos nuevos: se importan aunque falten datos (nombre, marca, precio, imagen).<br/>
+                    • El scraper completa lo faltante buscando en Jumbo, Carrefour, Farmacity, Coto y DuckDuckGo.
                   </div>
 
                   <div className="import-preview-table">
