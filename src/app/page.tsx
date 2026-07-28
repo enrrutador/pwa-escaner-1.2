@@ -66,6 +66,7 @@ function PulseRing() {
 export default function Dashboard() {
   const { usuario, inicializado } = useAuthStore();
   const { mostrarToast } = useUIStore();
+  const scraperStore = useScraperStore();
   const router = useRouter();
   const { productos, cargando: cargandoProd } = useProductos({ limite: 100 });
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
@@ -255,7 +256,6 @@ export default function Dashboard() {
     }
   };
 
-  const scraperStore = useScraperStore();
 
   const confirmImport = async () => {
     if (!importPreview || (importPreview.productos.length === 0 && importPreview.conflicts.length === 0)) return;
