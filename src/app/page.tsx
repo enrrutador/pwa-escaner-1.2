@@ -14,6 +14,7 @@ import { eventBus } from '@/lib/eventBus';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useScraperStore } from '@/store/scraperStore';
+import { importProductosFromFile, exportProductosToExcel } from '@/lib/excel';
 
 function StatIcon() {
   return (
@@ -221,7 +222,6 @@ export default function Dashboard() {
   const enStock = totalProductos - sinStock;
 
   const handleExport = async () => {
-    const { exportProductosToExcel } = await import('@/lib/excel');
     await exportProductosToExcel(productos);
     mostrarToast('exito', 'Exportación completada');
   };
@@ -231,18 +231,16 @@ export default function Dashboard() {
     if (!file) return;
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
       mostrarToast('error', 'Solo archivos .xlsx o .xls');
+      e.target.value = '';
       return;
     }
     setImportFile(file);
     setImportPreview(null);
     previewImport(file);
-    // Reset file input so same file can be re-selected after error
-    e.target.value = '';
   };
 
   const previewImport = async (file: File) => {
     try {
-      const { importProductosFromFile } = await import('@/lib/excel');
       const existingProducts = await dbProductos.listar({ limite: 10000 });
       const result = await importProductosFromFile(file, existingProducts.items);
       setImportPreview(result);
@@ -250,7 +248,8 @@ export default function Dashboard() {
       result.conflicts.forEach(c => { defaultResolutions[c.row] = 'skip'; });
       setConflictResolutions(defaultResolutions);
     } catch (err: any) {
-      mostrarToast('error', 'Error al leer el archivo: ' + err.message);
+      console.error('[import] Error al leer archivo:', err);
+      mostrarToast('error', 'Error al leer el archivo: ' + (err?.message || 'desconocido'));
       setImportFile(null);
       setImportPreview(null);
     }
