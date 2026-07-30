@@ -2,8 +2,12 @@
 // Utilidades para importar/exportar productos a Excel.
 // Importación sin fricción: toda fila se importa, datos faltantes se completan después con scraper.
 
-import * as XLSX from 'xlsx';
 import type { Producto } from '@/types';
+
+async function getXLSX() {
+  const mod = await import('xlsx');
+  return { utils: mod.utils, write: mod.write, read: mod.read };
+}
 
 function parseNumber(val: unknown, defaultVal = 0): number {
   if (val === null || val === undefined || val === '') return defaultVal;
@@ -197,13 +201,14 @@ function workbookToProductos(utils: any, wb: any, existingProducts: Producto[] =
 }
 
 export async function importProductosFromFile(file: File, existingProducts: Producto[] = []): Promise<ImportResult> {
+  const xlsx = await getXLSX();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
-        resolve(workbookToProductos(XLSX.utils, wb, existingProducts));
+        const wb = xlsx.read(data, { type: 'array' });
+        resolve(workbookToProductos(xlsx.utils, wb, existingProducts));
       } catch (err) {
         reject(err);
       }
@@ -214,6 +219,7 @@ export async function importProductosFromFile(file: File, existingProducts: Prod
 }
 
 export async function exportProductosToExcel(productos: Producto[]): Promise<void> {
+  const xlsx = await getXLSX();
   const data = productos.map((p) => ({
     PLU: p.plu,
     'Código de barras (EAN)': p.codigoBarras,
@@ -228,11 +234,11 @@ export async function exportProductosToExcel(productos: Producto[]): Promise<voi
     'Ubicación ID': p.ubicacionId ?? '',
   }));
 
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+  const ws = xlsx.utils.json_to_sheet(data);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, ws, 'Productos');
 
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const wbout = xlsx.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([wbout], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

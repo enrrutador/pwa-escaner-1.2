@@ -14,7 +14,6 @@ import { eventBus } from '@/lib/eventBus';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useScraperStore } from '@/store/scraperStore';
-import { importProductosFromFile, exportProductosToExcel } from '@/lib/excel';
 
 function StatIcon() {
   return (
@@ -222,6 +221,7 @@ export default function Dashboard() {
   const enStock = totalProductos - sinStock;
 
   const handleExport = async () => {
+    const { exportProductosToExcel } = await import('@/lib/excel');
     await exportProductosToExcel(productos);
     mostrarToast('exito', 'Exportación completada');
   };
@@ -241,6 +241,7 @@ export default function Dashboard() {
 
   const previewImport = async (file: File) => {
     try {
+      const { importProductosFromFile } = await import('@/lib/excel');
       const existingProducts = await dbProductos.listar({ limite: 10000 });
       const result = await importProductosFromFile(file, existingProducts.items);
       setImportPreview(result);
