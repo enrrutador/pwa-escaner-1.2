@@ -4,9 +4,37 @@
 
 import type { Producto } from '@/types';
 
-async function getXLSX() {
-  const mod = await import('xlsx');
-  return { utils: mod.utils, write: mod.write, read: mod.read };
+// Carga xlsx: primero intenta import dinámico (npm), si falla usa CDN global XLSX
+async function getXLSX(): Promise<{ utils: any; write: any; read: any }> {
+  // 1. Intento 1: import dinámico npm (funciona si webpack resolvió correctamente)
+  try {
+    const mod = await import('xlsx');
+    return { utils: mod.utils, write: mod.write, read: mod.read };
+  } catch (e) {
+    console.warn('[excel] Dynamic import xlsx failed, trying CDN:', e);
+  }
+
+  // 2. Intento 2: CDN global (SheetJS Community Edition via unpkg)
+  if (typeof window !== 'undefined') {
+    await loadXLSXFromCDN();
+    if ((window as any).XLSX) {
+      const XLSX = (window as any).XLSX;
+      return { utils: XLSX.utils, write: XLSX.write, read: XLSX.read };
+    }
+  }
+
+  throw new Error('No se pudo cargar la librería xlsx (ni npm ni CDN)');
+}
+
+function loadXLSXFromCDN(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).XLSX) return resolve();
+    const script = document.createElement('script');
+    script.src = 'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('CDN xlsx failed'));
+    document.head.appendChild(script);
+  });
 }
 
 function parseNumber(val: unknown, defaultVal = 0): number {
