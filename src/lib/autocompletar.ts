@@ -30,24 +30,35 @@ interface ScraperResultado {
 
 async function buscarEnScraper(query: string): Promise<ScraperResultado['resultados']> {
   try {
-    const res = await fetch(`/api/buscar?q=${encodeURIComponent(query)}`);
-    if (!res.ok) return [];
+    const res = await fetch(`/api/buscar?q=${encodeURIComponent(query)}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      console.error('[autocompletar] /api/buscar devolvió', res.status);
+      return [];
+    }
     const data: ScraperResultado = await res.json();
     return data.resultados || [];
-  } catch {
+  } catch (e) {
+    console.error('[autocompletar] Error en fetch /api/buscar:', e);
     return [];
   }
 }
 
 async function autocompletarProducto(producto: Producto): Promise<boolean> {
-  // Prioridad de query: EAN > PLU > nombre
   const query = producto.codigoBarras || producto.plu || producto.nombre;
   if (!query || query === 'Producto sin nombre') return false;
 
   const resultados = await buscarEnScraper(query);
-  if (resultados.length === 0) return false;
+  if (resultados.length === 0) {
+    console.log(`[autocompletar] Sin resultados para: ${query}`);
+    return false;
+  }
 
-  const r = resultados[0];
+  // Priorizar resultado con imagen
+  const r = resultados.find(r => r.imagen) || resultados[0];
+  console.log(`[autocompletar] Encontrado: "${r.nombre}" - imagen: ${r.imagen ? 'sí' : 'no'}`);
+
   const actualizaciones: Partial<Producto> = {};
   let cambio = false;
 
@@ -79,8 +90,9 @@ async function autocompletarProducto(producto: Producto): Promise<boolean> {
   if (cambio) {
     try {
       await dbProductos.actualizar(producto.id, actualizaciones);
-    } catch {
-      // Si la actualización falla (ej: sin permisos), no rompemos el flujo
+      console.log(`[autocompletar] Producto "${producto.id}" actualizado`);
+    } catch (e: any) {
+      console.error(`[autocompletar] Error actualizando producto ${producto.id}:`, e.message);
     }
   }
   return cambio;

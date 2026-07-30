@@ -309,7 +309,8 @@ export default function Dashboard() {
             }
           });
           if (total === 0) scraperStore.reset();
-        } catch {
+        } catch (e: any) {
+          console.error('[import] Error en autocompletado:', e);
           scraperStore.reset();
         }
       })();
