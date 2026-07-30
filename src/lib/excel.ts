@@ -138,17 +138,12 @@ function getField(row: Record<string, string | number>, field: keyof ProductoInf
 }
 
 function workbookToProductos(utils: any, wb: any, existingProducts: Producto[] = []): ImportResult {
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) return { productos: [], errors: [{ row: 0, message: 'El archivo no tiene hojas con datos' }], conflicts: [] };
+  // Process ALL sheets and combine results
+  const allProductos: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+  const allErrors: { row: number; message: string }[] = [];
+  const allConflicts: ImportConflict[] = [];
 
-  const ws = wb.Sheets[sheetName];
-  const rows = (utils as any).sheet_to_json(ws, { defval: '' });
-
-  const productos: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'>[] = [];
-  const errors: { row: number; message: string }[] = [];
-  const conflicts: ImportConflict[] = [];
-
-  // Build lookup maps for O(1) duplicate detection
+  // Build lookup maps for O(1) duplicate detection (shared across all sheets)
   const eanMap = new Map<string, Producto>();
   const pluMap = new Map<string, Producto>();
   existingProducts.forEach(p => {
@@ -156,76 +151,89 @@ function workbookToProductos(utils: any, wb: any, existingProducts: Producto[] =
     if (p.plu) pluMap.set(p.plu, p);
   });
 
-  rows.forEach((row: Record<string, string | number>, idx: number) => {
-    const rowNum = idx + 2;
+  let globalRowNum = 0;
 
-    // === Extracción flexible de campos (sin validaciones estrictas) ===
-    const plu = parseString(getField(row, 'plu'));
-    const codigoBarras = parseString(getField(row, 'codigoBarras'));
-    let nombre = parseString(getField(row, 'nombre'));
-    const descripcionRaw = parseString(getField(row, 'descripcion'));
-    const categoriaRaw = parseString(getField(row, 'categoria'));
-    const marca = parseString(getField(row, 'marca'));
-    const precioCompra = parseNumber(getField(row, 'precioCompra'));
-    const precioVenta = parseNumber(getField(row, 'precioVenta'));
-    const stockActual = parseNumber(getField(row, 'stockActual'));
-    const stockMinimo = parseNumber(getField(row, 'stockMinimo'), 5);
-    const ubicacionId = parseString(getField(row, 'ubicacionId')) || null;
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    const rows = (utils as any).sheet_to_json(ws, { defval: '' });
 
-    // Si la fila está completamente vacía (todos los campos vacíos), la saltamos
-    if (!plu && !codigoBarras && !nombre && !marca && precioVenta === 0 && stockActual === 0) {
-      return;
-    }
+    rows.forEach((row: Record<string, string | number>, idx: number) => {
+      const rowNum = globalRowNum + idx + 1; // 1-based row number across all sheets
 
-    // Defaults para campos faltantes - el scraper los completará después
-    if (!nombre) nombre = 'Producto sin nombre';
-    const categoria = categoriaRaw || 'General';
-    const descripcion = descripcionRaw || undefined;
+      // === Extracción flexible de campos (sin validaciones estrictas) ===
+      const plu = parseString(getField(row, 'plu'));
+      const codigoBarras = parseString(getField(row, 'codigoBarras'));
+      let nombre = parseString(getField(row, 'nombre'));
+      const descripcionRaw = parseString(getField(row, 'descripcion'));
+      const categoriaRaw = parseString(getField(row, 'categoria'));
+      const marca = parseString(getField(row, 'marca'));
+      const precioCompra = parseNumber(getField(row, 'precioCompra'));
+      const precioVenta = parseNumber(getField(row, 'precioVenta'));
+      const stockActual = parseNumber(getField(row, 'stockActual'));
+      const stockMinimo = parseNumber(getField(row, 'stockMinimo'), 5);
+      const ubicacionId = parseString(getField(row, 'ubicacionId')) || null;
 
-    const importData: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'> = {
-      plu,
-      codigoBarras,
-      nombre,
-      descripcion,
-      categoria,
-      marca,
-      precioCompra,
-      precioVenta,
-      stockActual,
-      stockMinimo,
-      ubicacionId,
-      activo: true,
-    };
+      // Si la fila está completamente vacía (todos los campos vacíos), la saltamos
+      if (!plu && !codigoBarras && !nombre && !marca && precioVenta === 0 && stockActual === 0) {
+        return;
+      }
 
-    // Check for conflicts (duplicados)
-    const existingByEan = codigoBarras ? eanMap.get(codigoBarras) : null;
-    const existingByPlu = plu ? pluMap.get(plu) : null;
+      // Defaults para campos faltantes - el scraper los completará después
+      if (!nombre) nombre = 'Producto sin nombre';
+      const categoria = categoriaRaw || 'General';
+      const descripcion = descripcionRaw || undefined;
 
-    if (existingByEan || existingByPlu) {
-      const existing = existingByEan || existingByPlu!;
-      const conflictType = existingByEan && existingByPlu ? 'both' : (existingByEan ? 'ean' : 'plu');
+      const importData: Omit<Producto, 'id' | 'createdAt' | 'updatedAt'> = {
+        plu,
+        codigoBarras,
+        nombre,
+        descripcion,
+        categoria,
+        marca,
+        precioCompra,
+        precioVenta,
+        stockActual,
+        stockMinimo,
+        ubicacionId,
+        activo: true,
+      };
 
-      conflicts.push({
-        row: rowNum,
-        type: conflictType,
-        existing: {
-          id: existing.id,
-          codigoBarras: existing.codigoBarras,
-          plu: existing.plu,
-          nombre: existing.nombre,
-          stockActual: existing.stockActual,
-          precioVenta: existing.precioVenta,
-        },
-        importData,
-        resolution: 'skip',
-      });
-      return;
-    }
+      // Check for conflicts (duplicados) against existing + already imported in this session
+      const existingByEan = codigoBarras ? eanMap.get(codigoBarras) : null;
+      const existingByPlu = plu ? pluMap.get(plu) : null;
 
-    productos.push(importData);
-  });
+      if (existingByEan || existingByPlu) {
+        const existing = existingByEan || existingByPlu!;
+        const conflictType = existingByEan && existingByPlu ? 'both' : (existingByEan ? 'ean' : 'plu');
 
-  return { productos, errors, conflicts };
+        allConflicts.push({
+          row: rowNum,
+          type: conflictType,
+          existing: {
+            id: existing.id,
+            codigoBarras: existing.codigoBarras,
+            plu: existing.plu,
+            nombre: existing.nombre,
+            stockActual: existing.stockActual,
+            precioVenta: existing.precioVenta,
+          },
+          importData,
+          resolution: 'skip',
+        });
+        return;
+      }
+
+      // Add to maps so subsequent rows in same import detect duplicates
+      if (codigoBarras) eanMap.set(codigoBarras, { ...importData, id: `temp-${rowNum}` } as Producto);
+      if (plu) pluMap.set(plu, { ...importData, id: `temp-${rowNum}` } as Producto);
+
+      allProductos.push(importData);
+    });
+
+    globalRowNum += rows.length;
+  }
+
+  return { productos: allProductos, errors: allErrors, conflicts: allConflicts };
 }
 
 export async function importProductosFromFile(file: File, existingProducts: Producto[] = []): Promise<ImportResult> {
